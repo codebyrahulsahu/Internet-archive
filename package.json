@@ -1,0 +1,28 @@
+{
+  "name": "streamhub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StreamHub — YouTube-inspired video app UI powered by the Internet Archive (archive.org), built with plain HTML/CSS/JS.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node scripts/verify.mjs",
+    "lint": "npm run lint:js && npm run lint:html && npm run lint:css",
+    "lint:js": "eslint js scripts",
+    "lint:html": "html-validate index.html",
+    "lint:css": "stylelint \"css/*.css\"",
+    "lint:fix": "eslint js scripts --fix && stylelint \"css/*.css\" --fix",
+    "test": "node scripts/smoke-test.mjs",
+    "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
+    "html-validate": "^9.7.1",
+    "jsdom": "^30.0.1",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0"
+  }
+}

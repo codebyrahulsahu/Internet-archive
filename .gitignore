@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# lint caches
+.eslintcache
+.stylelintcache
+.rpt2_cache/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# logs
+*.log
+npm-debug.log*
+
+# local build output
+dist/
