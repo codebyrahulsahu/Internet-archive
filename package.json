@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "StreamHub — YouTube-inspired video app UI powered by the Internet Archive (archive.org), built with plain HTML/CSS/JS.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "check": "node scripts/verify.mjs",
     "lint": "npm run lint:js && npm run lint:html && npm run lint:css",
