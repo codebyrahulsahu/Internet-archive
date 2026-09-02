@@ -2,7 +2,10 @@
 #
 # 1. हर push/PR पर: lint (JS/HTML/CSS) + asset sanity check + एक छोटा smoke test
 # 2. main पर merge होने पर: साइट GitHub Pages पर deploy हो जाती है
-#    (Repo Settings → Pages → Source: "GitHub Actions" होना चाहिए)
+#    एक बार का setup ज़रूरी है: Repo Settings → Pages → Source: "GitHub Actions"
+#    (GITHUB_TOKEN स्वयं Pages site enable नहीं कर सकता — GitHub limitation,
+#     https://github.com/actions/configure-pages/issues/40 ;
+#     वैकल्पिक: repo secret PAGES_PAT से auto-enable)
 name: CI
 
 on:
@@ -84,11 +87,55 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure Pages site exists
+        # GITHUB_TOKEN (GitHub App token) Pages site create नहीं कर सकता —
+        # GitHub ने create/delete endpoints को apps के लिए block कर रखा है
+        # (https://github.com/actions/configure-pages/issues/40), इसलिए यहाँ
+        # पहले site enabled है या नहीं check करते हैं। नहीं है तो:
+        #   - PAGES_PAT secret मौजूद है (user PAT) → उसके साथ enable करते हैं
+        #   - वरना clear one-time setup instructions के साथ fail करते हैं
+        env:
+          PAGES_PAT: ${{ secrets.PAGES_PAT }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages"
+          PAGE_JSON=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                       -H "Accept: application/vnd.github+json" "$API" 2>/dev/null) || PAGE_JSON=""
+          if [ -n "$PAGE_JSON" ]; then
+            BUILD_TYPE=$(echo "$PAGE_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("build_type",""))' 2>/dev/null || true)
+            if [ "$BUILD_TYPE" != "workflow" ]; then
+              echo "::warning::Pages site exists but its source is not 'GitHub Actions'. Set Repo Settings → Pages → Source: 'GitHub Actions' or deploys will not publish."
+            else
+              echo "✓ Pages site already enabled (source: GitHub Actions)"
+            fi
+            exit 0
+          fi
+          echo "::notice::No Pages site found — enabling it before deploy."
+          if [ -n "${PAGES_PAT:-}" ]; then
+            # User-to-server tokens (PAT/OAuth) Pages sites create कर सकते हैं
+            if ! curl -fsSL -X PUT \
+              -H "Authorization: Bearer ${PAGES_PAT}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d '{"build_type":"workflow","source":{"branch":"main","path":"/"}}' \
+              "$API" > /dev/null; then
+              echo "::error::Failed to enable Pages via PAGES_PAT — the secret may be expired or lack permissions."
+              exit 1
+            fi
+            echo "✓ Enabled GitHub Pages via PAGES_PAT (source: GitHub Actions, branch: main)"
+          else
+            {
+              echo "::error::GitHub Pages is not enabled for this repository."
+              echo "The workflow GITHUB_TOKEN is not allowed to create Pages sites (GitHub limitation: https://github.com/actions/configure-pages/issues/40)."
+              echo "One-time fix — do either, then re-run this workflow:"
+              echo "  1. Repo Settings → Pages → Build and deployment → Source: 'GitHub Actions' (branch: main)."
+              echo "  2. Add a repo secret PAGES_PAT (a user Personal Access Token with 'repo' scope) so the workflow can enable it automatically."
+            }
+            exit 1
+          fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          # Pages site न हो तो इसे "GitHub Actions" source के साथ enable करने की कोशिश
-          enablement: true
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
