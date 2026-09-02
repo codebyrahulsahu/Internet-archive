@@ -93,16 +93,22 @@ jobs:
         # (https://github.com/actions/configure-pages/issues/40), इसलिए यहाँ
         # पहले site enabled है या नहीं check करते हैं। नहीं है तो:
         #   - PAGES_PAT secret मौजूद है (user PAT) → उसके साथ enable करते हैं
-        #   - वरना clear one-time setup instructions के साथ fail करते हैं
+        #   - वरना deploy-pages को ही fail होने देते हैं (वह साफ़ error देता है)
+        # NOTE: runner GITHUB_TOKEN को automatically env में export नहीं करता —
+        # इसे explicitly map करना ज़रूरी है, वरना curl unauthorized जाएगा
+        # और script को हमेशा "site नहीं मिली" दिखेगा।
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PAGES_PAT: ${{ secrets.PAGES_PAT }}
         run: |
           set -euo pipefail
-          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages"
-          PAGE_JSON=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                       -H "Accept: application/vnd.github+json" "$API" 2>/dev/null) || PAGE_JSON=""
-          if [ -n "$PAGE_JSON" ]; then
-            BUILD_TYPE=$(echo "$PAGE_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("build_type",""))' 2>/dev/null || true)
+          API="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pages"
+          HTTP_CODE=$(curl -sSL -o /tmp/pages.json -w "%{http_code}" --retry 3 \
+                       -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                       -H "Accept: application/vnd.github+json" \
+                       "$API") || HTTP_CODE="000"
+          if [ "$HTTP_CODE" = "200" ]; then
+            BUILD_TYPE=$(python3 -c 'import json;print(json.load(open("/tmp/pages.json")).get("build_type",""))' 2>/dev/null || true)
             if [ "$BUILD_TYPE" != "workflow" ]; then
               echo "::warning::Pages site exists but its source is not 'GitHub Actions'. Set Repo Settings → Pages → Source: 'GitHub Actions' or deploys will not publish."
             else
@@ -110,7 +116,7 @@ jobs:
             fi
             exit 0
           fi
-          echo "::notice::No Pages site found — enabling it before deploy."
+          echo "::warning::Could not read Pages site status (HTTP $HTTP_CODE)."
           if [ -n "${PAGES_PAT:-}" ]; then
             # User-to-server tokens (PAT/OAuth) Pages sites create कर सकते हैं
             if ! curl -fsSL -X PUT \
@@ -124,14 +130,9 @@ jobs:
             fi
             echo "✓ Enabled GitHub Pages via PAGES_PAT (source: GitHub Actions, branch: main)"
           else
-            {
-              echo "::error::GitHub Pages is not enabled for this repository."
-              echo "The workflow GITHUB_TOKEN is not allowed to create Pages sites (GitHub limitation: https://github.com/actions/configure-pages/issues/40)."
-              echo "One-time fix — do either, then re-run this workflow:"
-              echo "  1. Repo Settings → Pages → Build and deployment → Source: 'GitHub Actions' (branch: main)."
-              echo "  2. Add a repo secret PAGES_PAT (a user Personal Access Token with 'repo' scope) so the workflow can enable it automatically."
-            }
-            exit 1
+            # Lookup fail होने पर deploy block मत करो — अगर site सच में नहीं है
+            # तो actions/deploy-pages एक साफ़, actionable error के साथ fail होगा।
+            echo "::notice::Continuing to deploy — if the Pages site is truly missing, actions/deploy-pages will fail with a clear message (fix: Repo Settings → Pages → Source: 'GitHub Actions', or add a PAGES_PAT secret)."
           fi
 
       - name: Configure Pages
