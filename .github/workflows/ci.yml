@@ -86,6 +86,9 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Pages site न हो तो इसे "GitHub Actions" source के साथ enable करने की कोशिश
+          enablement: true
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
