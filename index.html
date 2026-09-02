@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="StreamHub — Material Design 3 पर आधारित video app UI, जिसका पूरा कंटेंट सीधे Internet Archive (archive.org) से स्ट्रीम होता है।">
+<meta name="theme-color" content="#0F0F0F">
 <title>StreamHub — Video App UI</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Google+Sans+Text:wght@400;500&display=swap" rel="stylesheet">
@@ -14,7 +17,7 @@
   <!-- ============ TOP APP BAR ============ -->
   <header class="topbar" id="topbar">
     <div class="topbar-left">
-      <button class="icon-btn" id="backBtn" aria-label="Back" hidden>
+      <button type="button" class="icon-btn" id="backBtn" aria-label="Back" hidden>
         <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"/></svg>
       </button>
       <div class="brand" id="brandLogo">
@@ -22,14 +25,14 @@
       </div>
     </div>
     <div class="topbar-right">
-      <button class="icon-btn" id="searchBtn" aria-label="Search">
+      <button type="button" class="icon-btn" id="searchBtn" aria-label="Search">
         <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
       </button>
-      <button class="icon-btn" aria-label="Notifications">
+      <button type="button" class="icon-btn" id="notifBtn" aria-label="Notifications">
         <svg viewBox="0 0 24 24"><path d="M12 22a2.4 2.4 0 0 0 2.4-2.4h-4.8A2.4 2.4 0 0 0 12 22m6-6.4v-5.2a6 6 0 0 0-4.8-5.88V3.6a1.2 1.2 0 0 0-2.4 0v.92A6 6 0 0 0 6 10.4v5.2L4 17.6v1.2h16v-1.2z"/></svg>
         <span class="dot"></span>
       </button>
-      <button class="icon-btn avatar-btn" aria-label="Account">
+      <button type="button" class="icon-btn avatar-btn" aria-label="Account">
         <span class="avatar" style="background:linear-gradient(135deg,#7c5cff,#ff5c8a)">रि</span>
       </button>
     </div>
@@ -39,32 +42,32 @@
   <div class="search-bar" id="searchBar" hidden>
     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
     <input type="text" id="searchInput" placeholder="Archive.org पर खोजें… (जैसे: charlie chaplin, jazz, apollo 11)">
-    <button class="icon-btn small" id="searchClose" aria-label="बंद करें">
+    <button type="button" class="icon-btn small" id="searchClose" aria-label="बंद करें">
       <svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 7 19l5.59-5.59L17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
   </div>
 
   <!-- ============ FILTER CHIPS ============ -->
-  <nav class="chips" id="chips">
-    <button class="chip active" data-query="mediatype:(movies) AND collection:(feature_films OR prelinger)">सभी</button>
-    <button class="chip" data-query="mediatype:(movies) AND collection:(feature_films)">मूवीज़</button>
-    <button class="chip" data-query="collection:(classic_tv)">क्लासिक टीवी</button>
-    <button class="chip" data-query="mediatype:(audio) AND collection:(etree OR opensource_audio)">म्यूज़िक</button>
-    <button class="chip" data-query="collection:(animationandcartoons)">एनिमेशन</button>
-    <button class="chip" data-query="collection:(newsandpublicaffairs)">न्यूज़रील्स</button>
-    <button class="chip" data-query="collection:(nasa)">NASA</button>
-    <button class="chip" data-query="collection:(prelinger)">आर्काइव्ड फ़िल्में</button>
+  <nav class="chips" id="chips" aria-label="कंटेंट फ़िल्टर">
+    <button type="button" class="chip active" data-query="mediatype:(movies) AND collection:(feature_films OR prelinger)">सभी</button>
+    <button type="button" class="chip" data-query="mediatype:(movies) AND collection:(feature_films)">मूवीज़</button>
+    <button type="button" class="chip" data-query="collection:(classic_tv)">क्लासिक टीवी</button>
+    <button type="button" class="chip" data-query="mediatype:(audio) AND collection:(etree OR opensource_audio)">म्यूज़िक</button>
+    <button type="button" class="chip" data-query="collection:(animationandcartoons)">एनिमेशन</button>
+    <button type="button" class="chip" data-query="collection:(newsandpublicaffairs)">न्यूज़रील्स</button>
+    <button type="button" class="chip" data-query="collection:(nasa)">NASA</button>
+    <button type="button" class="chip" data-query="collection:(prelinger)">आर्काइव्ड फ़िल्में</button>
   </nav>
 
   <!-- ============ HOME FEED ============ -->
-  <main class="feed" id="homeView">
+  <main class="feed" id="homeView" aria-label="होम फीड">
     <p class="feed-note">Internet Archive से लाइव कंटेंट लोड हो रहा है — सारे वीडियो <a href="https://archive.org" target="_blank" rel="noopener">archive.org</a> से आ रहे हैं।</p>
     <div class="grid" id="videoGrid"></div>
     <p class="feed-status" id="feedStatus" hidden></p>
   </main>
 
   <!-- ============ VIDEO PLAYER SCREEN ============ -->
-  <main class="player-view" id="playerView" hidden>
+  <main class="player-view" id="playerView" aria-label="वीडियो प्लेयर" hidden>
 
     <div class="player-wrap" id="playerWrap">
       <div class="ambient-glow" id="ambientGlow"></div>
@@ -78,24 +81,24 @@
       <div class="video-meta">
         <h1 class="video-title" id="pTitle">Material Design 3 से बनाएं एक शानदार वीडियो ऐप — पूरी गाइड</h1>
         <div class="channel-row">
-          <span class="avatar sm" style="background:linear-gradient(135deg,#3ddad7,#3d7bfd)">DS</span>
+          <span class="avatar sm" id="pChannelAvatar" style="background:linear-gradient(135deg,#3ddad7,#3d7bfd)">IA</span>
           <div class="channel-info">
-            <span class="channel-name">Design School <svg class="verified" viewBox="0 0 24 24"><path d="M12 2 9.7 4.3 6.5 4l-.6 3.2L3 9l1.7 2.8L3 15l3 1.8.5 3.2h3.2L12 22l2.3-2 3.2-.1.5-3.2 3-1.7-1.7-2.8L22 9l-3-1.8L18.5 4l-3.2.3z" fill="#3ea6ff"/></svg></span>
-            <span class="channel-subs">18.4 लाख सब्सक्राइबर</span>
+            <span class="channel-name"><span id="pChannelName">Internet Archive</span> <svg class="verified" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 9.7 4.3 6.5 4l-.6 3.2L3 9l1.7 2.8L3 15l3 1.8.5 3.2h3.2L12 22l2.3-2 3.2-.1.5-3.2 3-1.7-1.7-2.8L22 9l-3-1.8L18.5 4l-3.2.3z" fill="#3ea6ff"/></svg></span>
+            <span class="channel-subs" id="pChannelSubs">Internet Archive · archive.org</span>
           </div>
-          <button class="subscribe-btn">सब्सक्राइब करें</button>
+          <button type="button" class="subscribe-btn" id="subscribeBtn">सब्सक्राइब करें</button>
         </div>
 
         <div class="action-row">
           <div class="segmented">
-            <button class="seg-btn"><svg viewBox="0 0 24 24"><path d="M2 21h2v-9H2zm19.83-9.5c.11-.24.17-.51.17-.79V9.5c0-1.1-.9-2-2-2h-5.5l.83-4a1.5 1.5 0 0 0-1.47-1.8h-.16L9 6.3V21h9.5c.83 0 1.54-.5 1.84-1.22z"/></svg><span>24 हज़ार</span></button>
+            <button type="button" class="seg-btn" id="likeBtn" aria-label="पसंद करें"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21h2v-9H2zm19.83-9.5c.11-.24.17-.51.17-.79V9.5c0-1.1-.9-2-2-2h-5.5l.83-4a1.5 1.5 0 0 0-1.47-1.8h-.16L9 6.3V21h9.5c.83 0 1.54-.5 1.84-1.22z"/></svg><span id="likeCount">—</span></button>
             <span class="seg-divider"></span>
-            <button class="seg-btn"><svg viewBox="0 0 24 24"><path d="M22 3h-2v9h2zM2.17 11.5a1.7 1.7 0 0 0-.17.79v1.21c0 1.1.9 2 2 2h5.5l-.83 4a1.5 1.5 0 0 0 1.47 1.8h.16L15 17.7V3H5.5c-.83 0-1.54.5-1.84 1.22z"/></svg></button>
+            <button type="button" class="seg-btn" id="dislikeBtn" aria-label="नापसंद करें"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3h-2v9h2zM2.17 11.5a1.7 1.7 0 0 0-.17.79v1.21c0 1.1.9 2 2 2h5.5l-.83 4a1.5 1.5 0 0 0 1.47 1.8h.16L15 17.7V3H5.5c-.83 0-1.54.5-1.84 1.22z"/></svg></button>
           </div>
-          <button class="pill-action"><svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.4 2.4 0 0 0 0-1.4l7.05-4.11a2.99 2.99 0 1 0-.94-2.19c0 .24.04.47.09.7L8.06 9.81a3 3 0 1 0 0 4.38l7.13 4.15c-.05.21-.08.43-.08.66a2.99 2.99 0 1 0 2.89-3.92"/></svg><span>शेयर</span></button>
-          <button class="pill-action"><svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg><span>डाउनलोड</span></button>
-          <button class="pill-action"><svg viewBox="0 0 24 24"><path d="M14 10V4a2 2 0 0 0-2-2l-5 5v11h11.83a2 2 0 0 0 2-1.64L22 9h-8"/></svg><span>क्लिप</span></button>
-          <button class="pill-action"><svg viewBox="0 0 24 24"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2"/></svg><span>सेव</span></button>
+          <button type="button" class="pill-action" id="shareBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.4 2.4 0 0 0 0-1.4l7.05-4.11a2.99 2.99 0 1 0-.94-2.19c0 .24.04.47.09.7L8.06 9.81a3 3 0 1 0 0 4.38l7.13 4.15c-.05.21-.08.43-.08.66a2.99 2.99 0 1 0 2.89-3.92"/></svg><span>शेयर</span></button>
+          <button type="button" class="pill-action" id="downloadBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg><span>डाउनलोड</span></button>
+          <button type="button" class="pill-action" id="clipBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 10V4a2 2 0 0 0-2-2l-5 5v11h11.83a2 2 0 0 0 2-1.64L22 9h-8"/></svg><span>क्लिप</span></button>
+          <button type="button" class="pill-action" id="saveBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2"/></svg><span>सेव</span></button>
         </div>
 
         <div class="desc-box">
@@ -114,13 +117,37 @@
       </div>
 
       <div class="tabs">
-        <button class="tab active" data-tab="next">आगे क्या देखें</button>
-        <button class="tab" data-tab="comments">कमेंट्स</button>
+        <button type="button" class="tab active" data-tab="next">आगे क्या देखें</button>
+        <button type="button" class="tab" data-tab="info">जानकारी</button>
       </div>
 
       <div class="uplist" id="upNext"></div>
+      <div class="uplist" id="itemInfo" hidden></div>
     </div>
   </main>
+
+  <!-- ============ LIBRARY (watch history) ============ -->
+  <main class="library-view" id="libraryView" aria-label="लाइब्रेरी — देखे हुए वीडियो" hidden>
+    <div class="view-head">
+      <div>
+        <h1 class="view-title">लाइब्रेरी</h1>
+        <p class="view-sub">आपने हाल में जो देखा है — इस डिवाइस पर सेव रहता है</p>
+      </div>
+      <button type="button" class="clear-btn" id="clearHistoryBtn" hidden>इतिहास साफ़ करें</button>
+    </div>
+    <p class="history-empty" id="historyEmpty">अभी कुछ देखा नहीं गया — होम फीड से कोई वीडियो खोलें और वह यहाँ दिखने लगेगा।</p>
+    <div class="grid" id="historyGrid"></div>
+  </main>
+
+  <!-- ============ PLACEHOLDER (Shorts / Create / Subscriptions) ============ -->
+  <main class="placeholder-view" id="placeholderView" aria-label="आने वाला सेक्शन" hidden>
+    <div class="placeholder-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 9.7 4.3 6.5 4l-.6 3.2L3 9l1.7 2.8L3 15l3 1.8.5 3.2h3.2L12 22l2.3-2 3.2-.1.5-3.2 3-1.7-1.7-2.8L22 9l-3-1.8L18.5 4l-3.2.3z"/></svg></div>
+    <h2 id="placeholderTitle">शॉर्ट्स</h2>
+    <p>यह सेक्शन जल्द आ रहा है। फ़िलहाल होम फीड से archive.org का कंटेंट देखें और अपनी लाइब्रेरी में देखे हुए वीडियो फिर से खोलें।</p>
+  </main>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 
   <!-- ============ MINI PLAYER ============ -->
   <div class="mini-player" id="miniPlayer" hidden>
@@ -129,29 +156,29 @@
       <span class="mini-title" id="miniTitle">वीडियो टाइटल</span>
       <span class="mini-channel" id="miniChannel">Internet Archive</span>
     </div>
-    <button class="icon-btn small" id="miniClose" aria-label="Close">
+    <button type="button" class="icon-btn small" id="miniClose" aria-label="Close">
       <svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 7 19l5.59-5.59L17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
   </div>
 
   <!-- ============ BOTTOM NAVIGATION ============ -->
-  <nav class="bottom-nav" id="bottomNav">
-    <button class="nav-item active" data-view="home">
+  <nav class="bottom-nav" id="bottomNav" aria-label="मुख्य नेविगेशन">
+    <button type="button" class="nav-item active" data-view="home">
       <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
       <span>होम</span>
     </button>
-    <button class="nav-item" data-view="shorts">
+    <button type="button" class="nav-item" data-view="shorts">
       <svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>
       <span>शॉर्ट्स</span>
     </button>
-    <button class="nav-item create" data-view="create">
+    <button type="button" class="nav-item create" data-view="create" aria-label="क्रिएट">
       <span class="create-circle"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></span>
     </button>
-    <button class="nav-item" data-view="subs">
+    <button type="button" class="nav-item" data-view="subs">
       <svg viewBox="0 0 24 24"><path d="M20 8H4V6h16zm-2-6H6v2h12zM4 18h16a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2m6-7 5 3-5 3z"/></svg>
       <span>सब्स्क्रिप्शन</span>
     </button>
-    <button class="nav-item" data-view="library">
+    <button type="button" class="nav-item" data-view="library">
       <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm2 5h12v2H6zm3 5h6v2H9z"/></svg>
       <span>लाइब्रेरी</span>
     </button>

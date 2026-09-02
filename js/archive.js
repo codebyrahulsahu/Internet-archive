@@ -1,5 +1,6 @@
 // Thin wrapper around the Internet Archive's public API.
 // Docs: https://archive.org/developers/
+/* exported Archive */
 "use strict";
 
 const Archive = (function () {
@@ -49,6 +50,11 @@ const Archive = (function () {
     return `${BASE}/details/${encodeURIComponent(identifier)}`;
   }
 
+  /** URL for the item's download directory on archive.org */
+  function downloadUrl(identifier) {
+    return `${BASE}/download/${encodeURIComponent(identifier)}/`;
+  }
+
   /** Map a raw search doc into the shape our UI cards expect */
   function toCardModel(doc) {
     const title = doc.title || doc.identifier;
@@ -83,5 +89,5 @@ const Archive = (function () {
     return `linear-gradient(135deg, hsl(${h1} 70% 55%), hsl(${h2} 70% 50%))`;
   }
 
-  return { search, metadata, thumbUrl, embedUrl, detailsUrl, toCardModel };
+  return { search, metadata, thumbUrl, embedUrl, detailsUrl, downloadUrl, toCardModel };
 })();

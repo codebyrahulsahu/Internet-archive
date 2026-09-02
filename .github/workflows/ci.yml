@@ -1,0 +1,97 @@
+# StreamHub — CI + GitHub Pages deploy
+#
+# 1. हर push/PR पर: lint (JS/HTML/CSS) + asset sanity check + एक छोटा smoke test
+# 2. main पर merge होने पर: साइट GitHub Pages पर deploy हो जाती है
+#    (Repo Settings → Pages → Source: "GitHub Actions" होना चाहिए)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint JavaScript
+        run: npm run lint:js
+
+      - name: Validate HTML
+        run: npm run lint:html
+
+      - name: Lint CSS
+        run: npm run lint:css
+
+      - name: Verify referenced assets exist
+        run: npm run check
+
+      - name: DOM smoke test (jsdom)
+        run: npm test
+
+      - name: Smoke test (serve & fetch)
+        run: |
+          python3 -m http.server 8080 &
+          SERVER_PID=$!
+          sleep 2
+          for path in "/" "/css/style.css" "/js/archive.js" "/js/app.js" "/favicon.svg"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080$path")
+            if [ "$code" != "200" ]; then
+              echo "::error::GET $path returned $code"
+              kill $SERVER_PID || true
+              exit 1
+            fi
+            echo "✓ GET $path -> $code"
+          done
+          kill $SERVER_PID || true
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: lint
+    # सिर्फ main पर ही deploy हो — PRs से नहीं
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
