@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Google+Sans+Text:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body class="dark">
 
@@ -22,6 +23,12 @@
       </div>
     </div>
     <div class="topbar-right">
+      <button class="icon-btn topbar-only" id="topHomeBtn" data-view="home" data-i18n-title="navHome" title="Home" aria-label="Home">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      </button>
+      <button class="icon-btn topbar-only" id="topLibraryBtn" data-view="library" data-i18n-title="navLibrary" title="Library" aria-label="Library">
+        <svg viewBox="0 0 24 24"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2"/></svg>
+      </button>
       <button class="lang-toggle" id="langToggle" title="Switch language">EN</button>
       <button class="icon-btn" id="searchBtn" aria-label="Search">
         <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
@@ -43,7 +50,7 @@
       <svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 7 19l5.59-5.59L17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
   </div>
-  <p class="mic-status" id="micStatus" hidden></p>
+  <p class="mic-status" id="micStatus" role="status" aria-live="polite" hidden></p>
 
   <!-- ============ FILTER CHIPS ============ -->
   <nav class="chips" id="chips">
@@ -62,7 +69,7 @@
   <main class="feed" id="homeView">
     <p class="feed-note"><span data-i18n="feedNote">Live content loading from Internet Archive — everything comes from</span> <a href="https://archive.org" target="_blank" rel="noopener">archive.org</a>.</p>
     <div class="grid" id="videoGrid"></div>
-    <p class="feed-status" id="feedStatus" hidden></p>
+    <p class="feed-status" id="feedStatus" role="status" aria-live="polite" hidden></p>
   </main>
 
   <!-- ============ LIBRARY (SAVED / WATCH LATER) ============ -->
@@ -127,7 +134,7 @@
 
         <div class="action-row">
           <button class="pill-action" id="shareBtn"><svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.4 2.4 0 0 0 0-1.4l7.05-4.11a2.99 2.99 0 1 0-.94-2.19c0 .24.04.47.09.7L8.06 9.81a3 3 0 1 0 0 4.38l7.13 4.15c-.05.21-.08.43-.08.66a2.99 2.99 0 1 0 2.89-3.92"/></svg><span data-i18n="share">Share</span></button>
-          <button class="pill-action" id="downloadBtn"><svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg><span data-i18n="downloads">Download</span></button>
+          <button class="pill-action" id="downloadBtn" aria-expanded="false" aria-controls="downloadPanel"><svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg><span data-i18n="downloads">Download</span></button>
           <button class="pill-action" id="saveBtn"><svg viewBox="0 0 24 24"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2"/></svg><span data-i18n="save">Save</span></button>
         </div>
 
@@ -156,10 +163,13 @@
         <button class="tab active" data-tab="next" data-i18n="upNext">Up next</button>
         <button class="tab" data-tab="comments" data-i18n="comments">Comments</button>
       </div>
-
-      <div class="uplist" id="upNext"></div>
-      <p class="comments-disabled" id="commentsDisabled" data-i18n="commentsDisabled" hidden></p>
     </div>
+
+    <!-- Up-next rail. Must stay a DIRECT child of .player-view — the desktop
+         stylesheet places it with `grid-column:2`, which only works for grid
+         children, not for nodes nested inside .scroll-area. -->
+    <div class="uplist" id="upNext"></div>
+    <p class="comments-disabled" id="commentsDisabled" data-i18n="commentsDisabled" hidden></p>
   </main>
 
   <!-- ============ MINI PLAYER ============ -->
