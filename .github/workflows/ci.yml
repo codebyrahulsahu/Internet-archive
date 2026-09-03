@@ -59,7 +59,7 @@ jobs:
           python3 -m http.server 8080 &
           SERVER_PID=$!
           sleep 2
-          for path in "/" "/css/style.css" "/js/archive.js" "/js/app.js" "/favicon.svg"; do
+          for path in "/" "/css/style.css" "/js/i18n.js" "/js/archive.js" "/js/app.js" "/favicon.svg"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080$path")
             if [ "$code" != "200" ]; then
               echo "::error::GET $path returned $code"

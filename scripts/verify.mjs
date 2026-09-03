@@ -36,7 +36,7 @@ for (const cssFile of ["css/style.css"]) {
 }
 
 // 3. entry JS files referenced by the page must parse
-for (const jsFile of ["js/archive.js", "js/app.js"]) {
+for (const jsFile of ["js/i18n.js", "js/archive.js", "js/app.js"]) {
   readFileSync(resolve(root, jsFile), "utf8");
 }
 

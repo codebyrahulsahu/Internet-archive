@@ -5,69 +5,391 @@
   const grid = document.getElementById("videoGrid");
   const feedStatus = document.getElementById("feedStatus");
   const homeView = document.getElementById("homeView");
-  const playerView = document.getElementById("playerView");
   const libraryView = document.getElementById("libraryView");
-  const placeholderView = document.getElementById("placeholderView");
-  const placeholderTitle = document.getElementById("placeholderTitle");
-  const historyGrid = document.getElementById("historyGrid");
-  const historyEmpty = document.getElementById("historyEmpty");
-  const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+  const libraryGrid = document.getElementById("libraryGrid");
+  const libraryEmpty = document.getElementById("libraryEmpty");
+  const playerView = document.getElementById("playerView");
   const upNextList = document.getElementById("upNext");
-  const itemInfo = document.getElementById("itemInfo");
+  const commentsDisabled = document.getElementById("commentsDisabled");
   const backBtn = document.getElementById("backBtn");
   const brandLogo = document.getElementById("brandLogo");
   const chips = document.getElementById("chips");
   const bottomNav = document.getElementById("bottomNav");
+
   const miniPlayer = document.getElementById("miniPlayer");
   const miniVideoSlot = document.getElementById("miniVideoSlot");
   const miniTitle = document.getElementById("miniTitle");
   const miniChannel = document.getElementById("miniChannel");
   const miniClose = document.getElementById("miniClose");
+  const miniPlayToggle = document.getElementById("miniPlayToggle");
+
   const ambientGlow = document.getElementById("ambientGlow");
   const player = document.getElementById("player");
+  const playerLoading = document.getElementById("playerLoading");
+  const audioStage = document.getElementById("audioStage");
+  const audioArt = document.getElementById("audioArt");
+  const pdfFallback = document.getElementById("pdfFallback");
+  const customControls = document.getElementById("customControls");
+  const playToggle = document.getElementById("playToggle");
+  const progressTrack = document.getElementById("progressTrack");
+  const progressFill = document.getElementById("progressFill");
+  const curTimeEl = document.getElementById("curTime");
+  const durTimeEl = document.getElementById("durTime");
+  const muteToggle = document.getElementById("muteToggle");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+
   const pTitle = document.getElementById("pTitle");
+  const pAvatar = document.getElementById("pAvatar");
+  const pChannel = document.getElementById("pChannel");
   const pMetaLine = document.getElementById("pMetaLine");
   const pDesc = document.getElementById("pDesc");
   const openArchiveLink = document.getElementById("openArchiveLink");
+  const shareBtn = document.getElementById("shareBtn");
+  const downloadBtn = document.getElementById("downloadBtn");
+  const downloadPanel = document.getElementById("downloadPanel");
+  const downloadList = document.getElementById("downloadList");
+  const saveBtn = document.getElementById("saveBtn");
+
   const searchBtn = document.getElementById("searchBtn");
   const searchBar = document.getElementById("searchBar");
   const searchInput = document.getElementById("searchInput");
   const searchClose = document.getElementById("searchClose");
-  const notifBtn = document.getElementById("notifBtn");
-  const toastEl = document.getElementById("toast");
-  const likeBtn = document.getElementById("likeBtn");
-  const likeCount = document.getElementById("likeCount");
-  const dislikeBtn = document.getElementById("dislikeBtn");
-  const shareBtn = document.getElementById("shareBtn");
-  const downloadBtn = document.getElementById("downloadBtn");
-  const clipBtn = document.getElementById("clipBtn");
-  const saveBtn = document.getElementById("saveBtn");
-  const subscribeBtn = document.getElementById("subscribeBtn");
-  const pChannelName = document.getElementById("pChannelName");
-  const pChannelSubs = document.getElementById("pChannelSubs");
-  const pChannelAvatar = document.getElementById("pChannelAvatar");
+  const micBtn = document.getElementById("micBtn");
+  const micStatus = document.getElementById("micStatus");
+  const langToggle = document.getElementById("langToggle");
 
-  const HISTORY_KEY = "streamhub:history";
-  const SUBS_KEY = "streamhub:subs";
-  const HISTORY_LIMIT = 24;
+  let currentItem = null;   // {identifier, title, channel, kind, thumbUrl, ...}
+  let currentMediaEl = null; // the live <video>/<audio> DOM node, moved between player/mini-player
+  let currentKind = "video"; // 'video' | 'audio'
 
-  let currentItem = null;
-  let currentIframe = null; // the live <iframe> DOM node, moved between player/mini-player
-  let pendingModel = null;  // card model passed along with a navigate() to show title instantly
-  let toastTimer = null;
+  /* ================= WATCH LATER / SAVED (localStorage) ================= */
+  const SAVE_KEY = "sh_saved_items";
 
-  const DEFAULT_QUERY = chips.querySelector(".chip.active").dataset.query;
+  function getSaved() {
+    try { return JSON.parse(localStorage.getItem(SAVE_KEY) || "[]"); }
+    catch { return []; }
+  }
+  function setSaved(list) { localStorage.setItem(SAVE_KEY, JSON.stringify(list)); }
+  function isSaved(identifier) { return getSaved().some(i => i.identifier === identifier); }
+  function toggleSave(item) {
+    const list = getSaved();
+    const idx = list.findIndex(i => i.identifier === item.identifier);
+    if (idx >= 0) { list.splice(idx, 1); }
+    else {
+      list.unshift({
+        identifier: item.identifier, title: item.title, channel: item.channel,
+        avatar: item.avatar || "IA", avatarColor: item.avatarColor || "linear-gradient(135deg,#555,#333)",
+        thumbUrl: item.thumbUrl, kind: item.kind || currentKind, views: item.views || "", time: item.time || "",
+      });
+    }
+    setSaved(list);
+    updateSaveButton();
+  }
+  function updateSaveButton() {
+    if (!currentItem) return;
+    saveBtn.classList.toggle("active", isSaved(currentItem.identifier));
+    saveBtn.querySelector("span").textContent = I18N.t(isSaved(currentItem.identifier) ? "saved" : "save");
+  }
 
-  const PLACEHOLDER_TITLES = {
-    shorts: "शॉर्ट्स",
-    create: "क्रिएट",
-    subs: "सब्स्क्रिप्शन"
-  };
+  /* ================= FEED ================= */
 
-  /* ================= small helpers ================= */
+  function cardHTML(v) {
+    const badge = v.kind === "audio" ? "♪" : v.kind === "text" ? "📄" : "";
+    return `
+      <article class="card" data-id="${v.identifier}" data-kind="${v.kind}">
+        <div class="thumb-wrap">
+          <img src="${v.thumbUrl}" alt="" loading="lazy"
+               onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-fallback',style:'background:${v.avatarColor}'}))">
+          ${badge ? `<span class="media-badge">${badge}</span>` : ""}
+        </div>
+        <div class="card-body">
+          <span class="avatar" style="background:${v.avatarColor}">${v.avatar}</span>
+          <div class="card-text">
+            <p class="card-title">${escapeHTML(v.title)}</p>
+            <div class="card-meta">
+              <span>${escapeHTML(v.channel)}</span>
+              <span>${v.views} <span data-i18n-inline="views">${I18N.t("views")}</span> ${v.time ? "· " + v.time : ""}</span>
+            </div>
+          </div>
+        </div>
+      </article>`;
+  }
 
   function escapeHTML(s) {
     return String(s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  }
+
+  async function loadFeed(query, kind) {
+    feedStatus.hidden = false;
+    feedStatus.textContent = I18N.t("loading");
+    grid.innerHTML = "";
+    try {
+      const docs = await Archive.search(query, 16, kind);
+      if (!docs.length) {
+        feedStatus.textContent = I18N.t("noResults");
+        return;
+      }
+      const items = docs.map(Archive.toCardModel);
+      grid.innerHTML = items.map(cardHTML).join("");
+      grid.querySelectorAll(".card").forEach(card => {
+        card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
+      });
+      feedStatus.hidden = true;
+    } catch (err) {
+      feedStatus.textContent = I18N.t("loadFailed");
+    }
+  }
+
+  async function loadUpNext(relatedQuery, kind) {
+    upNextList.innerHTML = "";
+    try {
+      const query = relatedQuery || (chips.querySelector(".chip.active") || chips.querySelector(".chip")).dataset.query;
+      const useKind = kind || currentKind;
+      const docs = await Archive.search(query, 8, useKind);
+      const items = docs.map(Archive.toCardModel).filter(i => i.identifier !== (currentItem && currentItem.identifier));
+      upNextList.innerHTML = items.slice(0, 6).map(upCardHTML).join("");
+      upNextList.querySelectorAll(".up-card").forEach(card => {
+        card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
+      });
+    } catch {
+      upNextList.innerHTML = "";
+    }
+  }
+
+  function upCardHTML(v) {
+    return `
+      <div class="up-card" data-id="${v.identifier}">
+        <div class="up-thumb"><img src="${v.thumbUrl}" alt="" loading="lazy"
+             onerror="this.style.background='${v.avatarColor}';this.removeAttribute('src')"></div>
+        <div class="up-info">
+          <p class="up-title">${escapeHTML(v.title)}</p>
+          <span class="up-channel">${escapeHTML(v.channel)}</span>
+          <span class="up-meta">${v.views} ${I18N.t("views")}</span>
+        </div>
+      </div>`;
+  }
+
+  /* ================= LIBRARY (SAVED) VIEW ================= */
+
+  function renderLibrary() {
+    const items = getSaved();
+    if (!items.length) {
+      libraryGrid.innerHTML = "";
+      libraryEmpty.hidden = false;
+      return;
+    }
+    libraryEmpty.hidden = true;
+    libraryGrid.innerHTML = items.map(cardHTML).join("");
+    libraryGrid.querySelectorAll(".card").forEach(card => {
+      card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
+    });
+  }
+
+  /* ================= CUSTOM PLAYER (native <video>/<audio>, no third-party embed) ================= */
+
+  function fmtTime(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  function buildMediaEl(kind) {
+    const el = document.createElement(kind === "audio" ? "audio" : "video");
+    el.className = "media-el";
+    el.playsInline = true;
+    el.controls = false;
+    wireMediaEvents(el);
+    return el;
+  }
+
+  function wireMediaEvents(el) {
+    el.addEventListener("loadedmetadata", () => { durTimeEl.textContent = fmtTime(el.duration); });
+    el.addEventListener("timeupdate", () => {
+      if (el.duration) progressFill.style.width = (el.currentTime / el.duration) * 100 + "%";
+      curTimeEl.textContent = fmtTime(el.currentTime);
+    });
+    el.addEventListener("play", syncPlayIcons);
+    el.addEventListener("pause", syncPlayIcons);
+    el.addEventListener("waiting", () => { playerLoading.hidden = false; });
+    el.addEventListener("playing", () => { playerLoading.hidden = true; });
+    el.addEventListener("canplay", () => { playerLoading.hidden = true; customControls.hidden = false; });
+    el.addEventListener("error", () => { playerLoading.textContent = I18N.t("loadFailed"); playerLoading.hidden = false; });
+  }
+
+  function syncPlayIcons() {
+    const playing = currentMediaEl && !currentMediaEl.paused;
+    playToggle.querySelector(".ic-play").hidden = playing;
+    playToggle.querySelector(".ic-pause").hidden = !playing;
+    const miniIcon = miniPlayToggle.querySelector("svg");
+    miniIcon.innerHTML = playing
+      ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
+  }
+
+  playToggle.addEventListener("click", () => {
+    if (!currentMediaEl) return;
+    currentMediaEl.paused ? currentMediaEl.play() : currentMediaEl.pause();
+  });
+  miniPlayToggle.addEventListener("click", e => {
+    e.stopPropagation();
+    if (!currentMediaEl) return;
+    currentMediaEl.paused ? currentMediaEl.play() : currentMediaEl.pause();
+  });
+  progressTrack.addEventListener("click", e => {
+    if (!currentMediaEl || !currentMediaEl.duration) return;
+    const rect = progressTrack.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    currentMediaEl.currentTime = pct * currentMediaEl.duration;
+  });
+  muteToggle.addEventListener("click", () => {
+    if (!currentMediaEl) return;
+    currentMediaEl.muted = !currentMediaEl.muted;
+    muteToggle.querySelector(".ic-vol").hidden = currentMediaEl.muted;
+    muteToggle.querySelector(".ic-mute").hidden = !currentMediaEl.muted;
+  });
+  fullscreenBtn.addEventListener("click", () => {
+    if (currentKind === "audio") return;
+    if (currentMediaEl.requestFullscreen) currentMediaEl.requestFullscreen();
+    else if (currentMediaEl.webkitEnterFullscreen) currentMediaEl.webkitEnterFullscreen();
+  });
+
+  async function openMedia(quickModel) {
+    if (!quickModel) return;
+
+    // reopening the item that's already loaded (e.g. tapping the mini-player) —
+    // just move the live element back into the main player, don't reload it.
+    // (PDFs have no persistent element, so this only applies to video/audio.)
+    if (currentItem && currentItem.identifier === quickModel.identifier && currentMediaEl) {
+      hideMiniPlayer();
+      switchToPlayerView();
+      player.insertBefore(currentMediaEl, customControls);
+      if (currentKind === "audio") { currentMediaEl.hidden = true; audioStage.hidden = false; }
+      else { currentMediaEl.hidden = false; audioStage.hidden = true; }
+      customControls.hidden = false;
+      playerLoading.hidden = true;
+      syncPlayIcons();
+      loadUpNext(null, currentKind);
+      return;
+    }
+
+    currentItem = quickModel;
+    currentKind = quickModel.kind === "audio" ? "audio" : quickModel.kind === "text" ? "text" : "video";
+
+    // reset shell
+    pTitle.textContent = quickModel.title;
+    pAvatar.style.background = quickModel.avatarColor;
+    pAvatar.textContent = quickModel.avatar;
+    pChannel.textContent = quickModel.channel;
+    pMetaLine.textContent = I18N.t("loading");
+    pDesc.textContent = "";
+    openArchiveLink.href = Archive.detailsUrl(quickModel.identifier);
+    ambientGlow.style.backgroundImage = `url(${quickModel.thumbUrl})`;
+    downloadPanel.hidden = true;
+    downloadList.innerHTML = "";
+    updateSaveButton();
+
+    // reset player shell UI
+    playerLoading.hidden = false;
+    playerLoading.textContent = I18N.t("loading");
+    customControls.hidden = true;
+    progressFill.style.width = "0%";
+    curTimeEl.textContent = "0:00";
+    durTimeEl.textContent = "0:00";
+    player.classList.remove("doc-mode");
+
+    // detach any previous media element (also sweep any stray leftover nodes)
+    if (currentMediaEl) { currentMediaEl.pause(); currentMediaEl.remove(); currentMediaEl = null; }
+    player.querySelectorAll("video.media-el, audio.media-el, iframe.pdf-frame").forEach(n => n.remove());
+    audioStage.hidden = true;
+    pdfFallback.hidden = true;
+
+    switchToPlayerView();
+    hideMiniPlayer();
+    loadUpNext(null, currentKind);
+
+    try {
+      const meta = await Archive.metadata(quickModel.identifier);
+      const m = meta.metadata || {};
+      const kind = Archive.kindOf(m.mediatype);
+      currentKind = kind === "text" ? "text" : kind === "audio" ? "audio" : "video";
+
+      pTitle.textContent = m.title || quickModel.title;
+      const creator = Array.isArray(m.creator) ? m.creator[0] : (m.creator || quickModel.channel);
+      pChannel.textContent = creator;
+      miniChannel.textContent = creator;
+      pMetaLine.textContent = (m.publicdate ? m.publicdate.slice(0, 10) + " · " : "") + "Internet Archive";
+      pDesc.textContent = stripHtml(m.description || I18N.t("noDescription")).slice(0, 500);
+
+      // downloads panel (works the same for video/audio/PDF files)
+      const files = Archive.listDownloadFiles(meta.files, quickModel.identifier);
+      renderDownloadList(files);
+
+      if (currentKind === "text") {
+        openPdfReader(meta.files, quickModel.identifier);
+        return;
+      }
+
+      // playable video/audio file
+      const picked = Archive.pickMediaFile(meta.files, quickModel.identifier, currentKind);
+      if (!picked) {
+        playerLoading.textContent = I18N.t("loadFailed");
+        return;
+      }
+
+      const el = buildMediaEl(currentKind);
+      el.src = picked.url;
+      currentMediaEl = el;
+
+      if (currentKind === "audio") {
+        audioStage.hidden = false;
+        audioArt.style.background = quickModel.avatarColor;
+        audioArt.textContent = quickModel.avatar;
+        el.hidden = true; // no visual track — audioStage supplies the artwork
+      } else {
+        audioStage.hidden = true;
+      }
+      player.insertBefore(el, customControls);
+      el.autoplay = true;
+      el.play().catch(() => {});
+    } catch (err) {
+      pMetaLine.textContent = "Internet Archive";
+      pDesc.textContent = I18N.t("descFailed");
+      playerLoading.textContent = I18N.t("loadFailed");
+    }
+  }
+
+  /** Render a PDF/document item using the browser's own PDF viewer inside an iframe. */
+  function openPdfReader(files, identifier) {
+    player.classList.add("doc-mode");
+    customControls.hidden = true; // no play/pause/seek for documents
+    const pdf = Archive.pickPdfFile(files, identifier);
+    if (!pdf) {
+      pdfFallback.hidden = false;
+      playerLoading.hidden = true;
+      return;
+    }
+    const frame = document.createElement("iframe");
+    frame.className = "pdf-frame";
+    frame.src = pdf.url;
+    frame.title = "PDF preview";
+    frame.addEventListener("load", () => { playerLoading.hidden = true; });
+    player.insertBefore(frame, customControls);
+    // safety net: some mobile browsers can't render PDFs inline and never fire "load" as expected
+    setTimeout(() => { playerLoading.hidden = true; }, 4000);
+  }
+
+  function renderDownloadList(files) {
+    if (!files.length) {
+      downloadList.innerHTML = `<p class="feed-status" data-i18n="noDownloads">${I18N.t("noDownloads")}</p>`;
+      return;
+    }
+    downloadList.innerHTML = files.map(f => `
+      <a class="download-row" href="${f.url}" download target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg>
+        <span class="dl-name">${escapeHTML(f.name)}</span>
+        <span class="dl-meta">${f.format} · ${f.size}</span>
+      </a>`).join("");
   }
 
   function stripHtml(str) {
@@ -76,399 +398,67 @@
     return div.textContent || div.innerText || "";
   }
 
-  /** localStorage can throw (private mode / file://) — never let that break the app */
-  function store(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (err) {
-      return fallback;
-    }
-  }
-
-  function save(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (err) {
-      /* storage unavailable — features silently degrade */
-    }
-  }
-
-  function toast(msg) {
-    toastEl.textContent = msg;
-    toastEl.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2200);
-  }
-
-  /* ================= NAVIGATION (History API integration) ================= */
-
-  function navigate(view, param) {
-    history.pushState({ view, param }, "");
-    render(view, param);
-  }
-
-  function render(view, param) {
-    switch (view) {
-      case "library":
-        showLibrary();
-        break;
-      case "placeholder":
-        showPlaceholder(param);
-        break;
-      case "player":
-        openVideo(param);
-        break;
-      default:
-        showHome();
-    }
-  }
-
-  /** open a video from anywhere (cards, up-next, mini player) */
-  function playVideo(model) {
-    if (!model || !model.identifier) return;
-    pendingModel = model;
-    navigate("player", model.identifier);
-  }
-
-  window.addEventListener("popstate", e => {
-    const state = e.state || { view: "home" };
-    render(state.view, state.param);
-  });
-
-  function setActiveNav(view) {
-    bottomNav.querySelectorAll(".nav-item").forEach(b => {
-      b.classList.toggle("active", b.dataset.view === view);
-    });
-  }
-
-  function setTopbar(inSubView) {
-    backBtn.hidden = !inSubView;
-    brandLogo.style.display = inSubView ? "none" : "flex";
-  }
-
-  function hideAllViews() {
+  function switchToPlayerView() {
     homeView.hidden = true;
+    libraryView.hidden = true;
+    chips.hidden = true;
+    searchBar.hidden = true;
+    playerView.hidden = false;
+    backBtn.hidden = false;
+    brandLogo.style.display = "none";
+    bottomNav.hidden = true;
+    window.scrollTo({ top: 0 });
+  }
+
+  function goHome() {
     playerView.hidden = true;
     libraryView.hidden = true;
-    placeholderView.hidden = true;
-  }
-
-  function showHome() {
-    hideAllViews();
     homeView.hidden = false;
     chips.hidden = false;
-    searchBar.hidden = true;
+    backBtn.hidden = true;
+    brandLogo.style.display = "flex";
     bottomNav.hidden = false;
-    setTopbar(false);
-    setActiveNav("home");
-    updateMiniPlayer();
+    if (currentMediaEl) showMiniPlayer();
   }
 
-  function showLibrary() {
-    hideAllViews();
+  function goLibrary() {
+    playerView.hidden = true;
+    homeView.hidden = true;
+    chips.hidden = true;
     libraryView.hidden = false;
-    chips.hidden = true;
-    searchBar.hidden = true;
+    backBtn.hidden = true;
+    brandLogo.style.display = "flex";
     bottomNav.hidden = false;
-    setTopbar(true);
-    setActiveNav("library");
-    renderHistory();
-    updateMiniPlayer();
+    renderLibrary();
+    if (currentMediaEl) showMiniPlayer();
   }
 
-  function showPlaceholder(kind) {
-    hideAllViews();
-    placeholderView.hidden = false;
-    placeholderTitle.textContent = PLACEHOLDER_TITLES[kind] || "जल्द आ रहा है";
-    chips.hidden = true;
-    searchBar.hidden = true;
-    bottomNav.hidden = false;
-    setTopbar(true);
-    setActiveNav(kind);
-    updateMiniPlayer();
-  }
-
-  function switchToPlayerView() {
-    hideAllViews();
-    playerView.hidden = false;
-    chips.hidden = true;
-    searchBar.hidden = true;
-    bottomNav.hidden = true;
-    setTopbar(true);
-    window.scrollTo({ top: 0 });
-    updateMiniPlayer();
-  }
-
-  backBtn.addEventListener("click", () => history.back());
-
-  brandLogo.addEventListener("click", () => navigate("home"));
-
+  backBtn.addEventListener("click", goHome);
   bottomNav.querySelectorAll(".nav-item").forEach(btn => {
     btn.addEventListener("click", () => {
-      const view = btn.dataset.view;
-      if (view === "home") navigate("home");
-      else if (view === "library") navigate("library");
-      else navigate("placeholder", view);
+      bottomNav.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      if (btn.dataset.view === "home") goHome();
+      if (btn.dataset.view === "library") goLibrary();
     });
   });
 
-  /* ================= FEED ================= */
-
-  function cardHTML(v) {
-    return `
-      <article class="card" data-id="${escapeHTML(v.identifier)}" role="button" tabindex="0" aria-label="${escapeHTML(v.title)}">
-        <div class="thumb-wrap">
-          <img src="${v.thumbUrl}" alt="" loading="lazy" decoding="async">
-        </div>
-        <div class="card-body">
-          <span class="avatar" style="background:${v.avatarColor}">${escapeHTML(v.avatar)}</span>
-          <div class="card-text">
-            <p class="card-title">${escapeHTML(v.title)}</p>
-            <div class="card-meta">
-              <span>${escapeHTML(v.channel)}</span>
-              <span>${v.views} डाउनलोड्स ${v.time ? "· " + v.time : ""}</span>
-            </div>
-          </div>
-        </div>
-      </article>`;
-  }
-
-  /** attach click + keyboard activation + thumbnail fallback to rendered cards */
-  function bindCards(container, items) {
-    container.querySelectorAll(".card").forEach(card => {
-      const model = items.find(i => i.identifier === card.dataset.id);
-      const activate = () => {
-        if (model) playVideo(model);
-      };
-      card.addEventListener("click", activate);
-      card.addEventListener("keydown", e => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          activate();
-        }
-      });
-      const img = card.querySelector(".thumb-wrap img");
-      if (img) {
-        img.addEventListener("error", () => {
-          const fallback = document.createElement("div");
-          fallback.className = "thumb-fallback";
-          fallback.style.background = model ? model.avatarColor : "#212121";
-          img.replaceWith(fallback);
-        });
-      }
-    });
-  }
-
-  async function loadFeed(query) {
-    feedStatus.hidden = false;
-    feedStatus.textContent = "लोड हो रहा है…";
-    grid.innerHTML = "";
-    try {
-      const docs = await Archive.search(query, 16);
-      if (!docs.length) {
-        feedStatus.textContent = "कोई नतीजा नहीं मिला।";
-        return;
-      }
-      const items = docs.map(Archive.toCardModel);
-      grid.innerHTML = items.map(cardHTML).join("");
-      bindCards(grid, items);
-      feedStatus.hidden = true;
-    } catch (err) {
-      feedStatus.textContent = "archive.org से लोड नहीं हो सका — इंटरनेट कनेक्शन चेक करें। (" + err.message + ")";
-    }
-  }
-
-  async function loadUpNext(subject) {
-    upNextList.innerHTML = `<p class="feed-status">सुझाव लोड हो रहे हैं…</p>`;
-    const mediatype = (currentItem && currentItem.mediatype) || "movies";
-    const query = subject
-      ? `mediatype:(${mediatype}) AND subject:("${subject.replace(/"/g, "")}")`
-      : DEFAULT_QUERY;
-    try {
-      let docs = await Archive.search(query, 8);
-      if (!docs.length && subject) docs = await Archive.search(DEFAULT_QUERY, 8);
-      const items = docs
-        .map(Archive.toCardModel)
-        .filter(i => i.identifier !== (currentItem && currentItem.identifier));
-      upNextList.innerHTML = items.slice(0, 6).map(upCardHTML).join("");
-      upNextList.querySelectorAll(".up-card").forEach(card => {
-        card.addEventListener("click", () => {
-          const model = items.find(i => i.identifier === card.dataset.id);
-          if (model) playVideo(model);
-        });
-      });
-    } catch (err) {
-      upNextList.innerHTML = `<p class="feed-status">सुझाव लोड नहीं हो सके।</p>`;
-    }
-  }
-
-  function upCardHTML(v) {
-    return `
-      <div class="up-card" data-id="${escapeHTML(v.identifier)}" role="button" tabindex="0" aria-label="${escapeHTML(v.title)}">
-        <div class="up-thumb"><img src="${v.thumbUrl}" alt="" loading="lazy" decoding="async"></div>
-        <div class="up-info">
-          <p class="up-title">${escapeHTML(v.title)}</p>
-          <span class="up-channel">${escapeHTML(v.channel)}</span>
-          <span class="up-meta">${v.views} डाउनलोड्स</span>
-        </div>
-      </div>`;
-  }
-
-  /* ================= WATCH HISTORY (Library) ================= */
-
-  function pushHistory(item) {
-    if (!item || !item.identifier) return;
-    const list = store(HISTORY_KEY, []).filter(i => i.identifier !== item.identifier);
-    list.unshift({
-      identifier: item.identifier,
-      title: item.title,
-      channel: item.channel,
-      avatar: item.avatar,
-      avatarColor: item.avatarColor,
-      views: item.views,
-      time: item.time,
-      mediatype: item.mediatype,
-      thumbUrl: item.thumbUrl
-    });
-    save(HISTORY_KEY, list.slice(0, HISTORY_LIMIT));
-  }
-
-  function historyLookup(identifier) {
-    return store(HISTORY_KEY, []).find(i => i.identifier === identifier) || null;
-  }
-
-  function renderHistory() {
-    const list = store(HISTORY_KEY, []);
-    historyEmpty.hidden = list.length > 0;
-    clearHistoryBtn.hidden = list.length === 0;
-    historyGrid.innerHTML = list.map(cardHTML).join("");
-    bindCards(historyGrid, list);
-  }
-
-  clearHistoryBtn.addEventListener("click", () => {
-    save(HISTORY_KEY, []);
-    renderHistory();
-    toast("देखने का इतिहास साफ़ कर दिया गया");
-  });
-
-  /* ================= PLAYER ================= */
-
-  function buildIframe(identifier) {
-    const iframe = document.createElement("iframe");
-    iframe.src = Archive.embedUrl(identifier);
-    iframe.setAttribute("allowfullscreen", "true");
-    iframe.className = "archive-iframe";
-    iframe.title = "archive.org player";
-    return iframe;
-  }
-
-  function firstSubject(meta) {
-    const m = meta.metadata || {};
-    if (!m.subject) return null;
-    const subject = Array.isArray(m.subject) ? m.subject[0] : String(m.subject).split(";")[0];
-    return subject ? subject.trim() : null;
-  }
-
-  function renderItemInfo(meta) {
-    const m = meta.metadata || {};
-    const creator = Array.isArray(m.creator) ? m.creator.join(", ") : (m.creator || "Internet Archive");
-    const date = (m.addeddate || m.publicdate || "").slice(0, 10);
-    const subjects = Array.isArray(m.subject) ? m.subject.join(" · ")
-      : (m.subject ? String(m.subject).split(";").map(s => s.trim()).join(" · ") : "—");
-    const rows = [
-      ["निर्माता", creator],
-      ["मीडिया प्रकार", m.mediatype || "—"],
-      ["जोड़े गए दिन", date || "—"],
-      ["विषय", subjects],
-      ["फ़ाइलें", meta.files ? meta.files.length + " फ़ाइलें" : "—"],
-      ["आइटम ID", m.identifier || "—"]
-    ];
-    itemInfo.innerHTML = `
-      <dl class="info-list">
-        ${rows.map(([k, v]) => `
-          <div class="info-row">
-            <dt class="info-key">${k}</dt>
-            <dd class="info-val">${escapeHTML(v)}</dd>
-          </div>`).join("")}
-      </dl>`;
-  }
-
-  function updateSubscribeUI() {
-    const subs = new Set(store(SUBS_KEY, []));
-    const subscribed = currentItem && subs.has(currentItem.channel);
-    subscribeBtn.classList.toggle("subscribed", Boolean(subscribed));
-    subscribeBtn.textContent = subscribed ? "सब्सक्राइब्ड ✓" : "सब्सक्राइब करें";
-  }
-
-  async function openVideo(identifier) {
-    currentItem = pendingModel || historyLookup(identifier) ||
-      { identifier, title: identifier, channel: "Internet Archive", mediatype: "movies", avatar: "IA", avatarColor: "linear-gradient(135deg,#3ddad7,#3d7bfd)" };
-    pendingModel = null;
-
-    // reset player shell
-    pTitle.textContent = currentItem.title;
-    pMetaLine.textContent = "लोड हो रहा है…";
-    pDesc.textContent = "";
-    pChannelName.textContent = currentItem.channel || "Internet Archive";
-    pChannelSubs.textContent = "Internet Archive · archive.org";
-    pChannelAvatar.textContent = currentItem.avatar || "IA";
-    if (currentItem.avatarColor) pChannelAvatar.style.background = currentItem.avatarColor;
-    likeBtn.classList.remove("active");
-    dislikeBtn.classList.remove("active");
-    likeCount.textContent = currentItem.views ? currentItem.views + " डाउनलोड्स" : "—";
-    openArchiveLink.href = Archive.detailsUrl(identifier);
-    ambientGlow.style.backgroundImage = `url(${Archive.thumbUrl(identifier)})`;
-    setTab("next");
-    updateSubscribeUI();
-
-    if (!currentIframe || currentIframe.dataset.id !== identifier) {
-      if (currentIframe) currentIframe.remove();
-      currentIframe = buildIframe(identifier);
-      currentIframe.dataset.id = identifier;
-    }
-    player.innerHTML = "";
-    player.appendChild(currentIframe);
-    switchToPlayerView();
-
-    pushHistory(currentItem);
-
-    try {
-      const meta = await Archive.metadata(identifier);
-      const m = meta.metadata || {};
-      pTitle.textContent = m.title || currentItem.title;
-      const creator = Array.isArray(m.creator) ? m.creator[0] : (m.creator || currentItem.channel);
-      miniChannel.textContent = creator;
-      pChannelName.textContent = creator || "Internet Archive";
-      pMetaLine.textContent = (m.publicdate ? m.publicdate.slice(0, 10) + " · " : "") + "Internet Archive";
-      pDesc.textContent = stripHtml(m.description || "इस आइटम के लिए कोई विवरण उपलब्ध नहीं है।").slice(0, 400);
-      renderItemInfo(meta);
-      // refresh history entry with the authoritative title
-      pushHistory(Object.assign({}, currentItem, { title: pTitle.textContent, channel: creator }));
-      loadUpNext(firstSubject(meta));
-    } catch (err) {
-      pMetaLine.textContent = "Internet Archive";
-      pDesc.textContent = "विवरण लोड नहीं हो सका।";
-      itemInfo.innerHTML = `<p class="feed-status">आइटम की जानकारी लोड नहीं हो सकी।</p>`;
-      loadUpNext(null);
-    }
-  }
-
-  /* ================= MINI PLAYER (moves the live iframe, no reload) ================= */
-
-  function updateMiniPlayer() {
-    if (currentIframe && playerView.hidden) showMiniPlayer();
-    else hideMiniPlayer();
-  }
+  /* ================= MINI PLAYER (moves the live media element, no reload) ================= */
 
   function showMiniPlayer() {
-    if (!currentIframe) return;
-    if (currentIframe.parentElement !== miniVideoSlot) {
-      miniVideoSlot.innerHTML = "";
-      miniVideoSlot.appendChild(currentIframe);
+    if (!currentMediaEl) return;
+    miniVideoSlot.innerHTML = "";
+    miniVideoSlot.appendChild(currentMediaEl); // move the live node — keeps it playing, no reload
+    if (currentKind === "audio") {
+      currentMediaEl.hidden = true; // no visual track — show a color chip instead
+      miniVideoSlot.style.background = currentItem.avatarColor;
+    } else {
+      currentMediaEl.hidden = false;
+      miniVideoSlot.style.background = "";
     }
-    miniTitle.textContent = currentItem ? currentItem.title : "";
+    miniTitle.textContent = currentItem.title;
     miniPlayer.hidden = false;
+    syncPlayIcons();
   }
 
   function hideMiniPlayer() {
@@ -477,14 +467,38 @@
 
   miniClose.addEventListener("click", e => {
     e.stopPropagation();
-    if (currentIframe) { currentIframe.remove(); currentIframe = null; }
+    if (currentMediaEl) { currentMediaEl.pause(); currentMediaEl.remove(); currentMediaEl = null; }
     hideMiniPlayer();
   });
 
   miniPlayer.addEventListener("click", e => {
-    if (e.target.closest("#miniClose")) return;
-    if (currentItem) playVideo(currentItem);
+    if (e.target.closest("#miniClose") || e.target.closest("#miniPlayToggle")) return;
+    if (currentItem) openMedia(currentItem);
   });
+
+  /* ================= SAVE / SHARE / DOWNLOAD BUTTONS ================= */
+
+  saveBtn.addEventListener("click", () => {
+    if (currentItem) toggleSave(currentItem);
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    downloadPanel.hidden = !downloadPanel.hidden;
+  });
+
+  shareBtn.addEventListener("click", async () => {
+    if (!currentItem) return;
+    const url = Archive.detailsUrl(currentItem.identifier);
+    try {
+      if (navigator.share) await navigator.share({ title: currentItem.title, url });
+      else { await navigator.clipboard.writeText(url); flashShareStatus(); }
+    } catch { /* user cancelled share sheet — ignore */ }
+  });
+  function flashShareStatus() {
+    const span = shareBtn.querySelector("span");
+    span.textContent = I18N.t("linkCopied");
+    setTimeout(() => { span.textContent = I18N.t("share"); }, 1500);
+  }
 
   /* ================= FILTER CHIPS ================= */
 
@@ -492,113 +506,82 @@
     chip.addEventListener("click", () => {
       chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
       chip.classList.add("active");
-      loadFeed(chip.dataset.query);
+      loadFeed(chip.dataset.query, chip.dataset.kind);
     });
   });
 
-  /* ================= SEARCH ================= */
-
-  // archive.org की query syntax तोड़ने वाले characters हटा दें
-  function sanitizeQuery(q) {
-    return q.replace(/[():"\\]/g, " ").replace(/\s+/g, " ").trim();
-  }
-
-  function closeSearch() {
-    searchBar.hidden = true;
-    if (!homeView.hidden) chips.hidden = false;
-    searchInput.value = "";
-  }
+  /* ================= SEARCH BAR + MIC ================= */
 
   searchBtn.addEventListener("click", () => {
-    if (searchBar.hidden) {
-      searchBar.hidden = false;
-      chips.hidden = true;
-      searchInput.focus();
-    } else {
-      closeSearch();
-    }
+    searchBar.hidden = false;
+    chips.hidden = true;
+    searchInput.focus();
   });
-
-  searchClose.addEventListener("click", closeSearch);
-
+  searchClose.addEventListener("click", () => {
+    searchBar.hidden = true;
+    chips.hidden = false;
+    searchInput.value = "";
+  });
+  function runSearch(text) {
+    if (!text.trim()) return;
+    chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+    loadFeed(`title:(${text}) OR subject:(${text}) OR description:(${text})`, "video");
+    searchBar.hidden = true;
+    chips.hidden = false;
+  }
   searchInput.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      closeSearch();
-    } else if (e.key === "Enter") {
-      const q = sanitizeQuery(searchInput.value);
-      if (q) {
-        chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-        loadFeed(`title:(${q}) OR subject:(${q}) OR creator:(${q})`);
-        closeSearch();
-      }
+    if (e.key === "Enter") runSearch(searchInput.value);
+  });
+
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognizer = null;
+  micBtn.addEventListener("click", () => {
+    if (!SpeechRecognitionCtor) {
+      micStatus.hidden = false;
+      micStatus.textContent = I18N.t("micUnsupported");
+      setTimeout(() => { micStatus.hidden = true; }, 3000);
+      return;
     }
+    if (recognizer) { recognizer.stop(); return; }
+    recognizer = new SpeechRecognitionCtor();
+    recognizer.lang = I18N.lang() === "hi" ? "hi-IN" : "en-US";
+    recognizer.interimResults = false;
+    recognizer.maxAlternatives = 1;
+    micBtn.classList.add("active");
+    micStatus.hidden = false;
+    micStatus.textContent = I18N.t("listening");
+
+    recognizer.onresult = e => {
+      const text = e.results[0][0].transcript;
+      searchInput.value = text;
+      runSearch(text);
+    };
+    recognizer.onerror = () => { micStatus.hidden = true; };
+    recognizer.onend = () => { micBtn.classList.remove("active"); micStatus.hidden = true; recognizer = null; };
+    recognizer.start();
   });
 
-  /* ================= PLAYER ACTION BUTTONS ================= */
-
-  subscribeBtn.addEventListener("click", () => {
-    if (!currentItem) return;
-    const channel = currentItem.channel || "Internet Archive";
-    const subs = new Set(store(SUBS_KEY, []));
-    if (subs.has(channel)) {
-      subs.delete(channel);
-      toast("सब्सक्रिप्शन हटाया गया");
-    } else {
-      subs.add(channel);
-      toast("सब्सक्राइब किया गया (डेमो)");
-    }
-    save(SUBS_KEY, Array.from(subs));
-    updateSubscribeUI();
+  /* ================= LANGUAGE TOGGLE ================= */
+  langToggle.addEventListener("click", () => I18N.toggle());
+  document.addEventListener("i18n:changed", () => {
+    if (currentItem) updateSaveButton();
+    if (!homeView.hidden) { /* re-render feed text bits handled by data-i18n already */ }
+    if (!libraryView.hidden) renderLibrary();
   });
-
-  likeBtn.addEventListener("click", () => {
-    dislikeBtn.classList.remove("active");
-    likeBtn.classList.toggle("active");
-  });
-
-  dislikeBtn.addEventListener("click", () => {
-    likeBtn.classList.remove("active");
-    dislikeBtn.classList.toggle("active");
-  });
-
-  shareBtn.addEventListener("click", async () => {
-    if (!currentItem) return;
-    const url = Archive.detailsUrl(currentItem.identifier);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(url);
-        toast("archive.org का लिंक कॉपी हो गया");
-        return;
-      } catch (err) {
-        /* clipboard blocked — fall through to opening the page */
-      }
-    }
-    window.open(url, "_blank", "noopener");
-  });
-
-  downloadBtn.addEventListener("click", () => {
-    if (!currentItem) return;
-    window.open(Archive.downloadUrl(currentItem.identifier), "_blank", "noopener");
-  });
-
-  clipBtn.addEventListener("click", () => toast("क्लिप बनाना जल्द आ रहा है"));
-  saveBtn.addEventListener("click", () => toast("सेव करना जल्द आ रहा है"));
-  notifBtn.addEventListener("click", () => toast("कोई नई सूचना नहीं है"));
 
   /* ================= TABS ================= */
-
-  function setTab(name) {
-    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
-    upNextList.hidden = name !== "next";
-    itemInfo.hidden = name !== "info";
-  }
-
   document.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", () => setTab(tab.dataset.tab));
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const isComments = tab.dataset.tab === "comments";
+      upNextList.hidden = isComments;
+      commentsDisabled.hidden = !isComments;
+    });
   });
 
   /* ================= INIT ================= */
-
-  history.replaceState({ view: "home" }, "");
-  loadFeed(DEFAULT_QUERY);
+  I18N.apply();
+  const defaultChip = chips.querySelector(".chip.active");
+  loadFeed(defaultChip.dataset.query, defaultChip.dataset.kind);
 })();
