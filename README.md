@@ -1,122 +1,93 @@
-# StreamHub — YouTube-inspired Video App UI
+# StreamHub — YouTube-inspired Video App UI (powered by archive.org)
 
 Material Design 3 पर आधारित एक video-streaming app UI — pure HTML, CSS और
-vanilla JavaScript में बना है। किसी भी बिल्ड टूल की ज़रूरत नहीं (Google Fonts
-optional है)। पूरा कंटेंट सीधे **Internet Archive (archive.org)** की public API
-से लाइव आता है।
+vanilla JavaScript में बना है, कोई बिल्ड टूल नहीं चाहिए। सारा कंटेंट
+**Internet Archive (archive.org)** की public API से लाइव आता है।
 
-## चलाने का तरीका
+## ज़रूरी: लोकल/असली सर्वर से चलाएं
 
-`index.html` को किसी भी ब्राउज़र में खोलें — archive.org API को `fetch()`
-करने के लिए फ़ाइल को सीधे डबल-क्लिक (file://) से खोलने की बजाय एक लोकल
-सर्वर से चलाएं, वरना ब्राउज़र CORS/security की वजह से रिक्वेस्ट ब्लॉक कर
-सकता है:
+फाइल को सीधे डबल-क्लिक (`file://`) से खोलने पर archive.org की API कॉल्स
+ब्राउज़र में ब्लॉक हो सकती हैं। हमेशा एक सर्वर से चलाएं:
 
 ```bash
-# repo root में:
+cd video-app
 python3 -m http.server 8000
-# फिर ब्राउज़र में खोलें: http://localhost:8000
+# फिर खोलें: http://localhost:8000
 ```
 
-या npm से:
+डिप्लॉय करने के लिए किसी भी static host (Netlify, Vercel, GitHub Pages,
+Cloudflare Pages) पर पूरा फ़ोल्डर अपलोड कर दें — कोई बैकएंड नहीं चाहिए।
 
-```bash
-npm install
-npm run serve
-```
+## इस अपडेट में क्या ठीक/जोड़ा गया
+
+- **Custom player (कोई तीसरी-पार्टी embed नहीं)** — अब archive.org के default
+  embed player की जगह अपना खुद का `<video>`/`<audio>` player है, custom
+  play/pause, progress bar, mute और fullscreen कंट्रोल्स के साथ।
+- **PDF अब video/audio फ़ीड में नहीं आतीं** — हर सर्च क्वेरी में सख्ती से
+  `mediatype:(movies)`/`mediatype:(audio)`/`mediatype:(texts)` फ़िल्टर जोड़ा गया
+  है, plus एक client-side डबल-चेक।
+  (देखें `js/archive.js` में `search()` और `kindOf()`)
+- **PDF/Books के लिए अलग सेक्शन** — filter chips में नया **"PDF / Books"** चिप
+  है। खोलने पर एक dedicated PDF reader स्क्रीन दिखती है (browser के native PDF
+  व्यूअर में, portrait-friendly बड़े व्यूपोर्ट के साथ) — video player वाला
+  play/pause/progress UI इसमें नहीं दिखता, बस Download/Share/Save और
+  "archive.org पर पूरा पेज खोलें" लिंक होता है। अगर किसी आइटम में सीधा PDF
+  फ़ाइल न मिले, एक friendly fallback मैसेज दिखता है (टूटता नहीं)।
+- **ऑडियो अब अलग दिखता है** — ऑडियो आइटम खुलने पर वीडियो जैसा काला बॉक्स नहीं,
+  बल्कि एक dedicated audio player UI (art + badge) दिखता है, हालांकि कंट्रोल्स
+  वही custom control bar इस्तेमाल करते हैं।
+- **Download सेक्शन** — प्लेयर स्क्रीन पर "Download" दबाने पर उस आइटम की सभी
+  उपलब्ध फ़ाइलें (format + size के साथ) दिखती हैं, हर एक पर सीधा डाउनलोड लिंक।
+- **Save / Watch Later** — "Save" बटन दबाकर कोई भी वीडियो/ऑडियो सेव करें;
+  यह ब्राउज़र के `localStorage` में रहता है (कोई लॉगिन नहीं चाहिए) और
+  bottom nav के **Library** टैब में दिखता है।
+- **कोई डिफ़ॉल्ट/थर्ड-पार्टी प्लेयर नहीं, कोई iframe नहीं** — पूरी तरह native
+  HTML5 media elements, ताकि प्लेबैक पर पूरा कंट्रोल रहे।
+- **Shorts और Subscribe हटाए गए** — bottom nav से Shorts हटाया गया, player
+  स्क्रीन से Subscribe बटन हटाया गया (कोई channel-subscription फीचर नहीं है)।
+- **भाषा टॉगल (Hindi/English)** — टॉप बार में "EN / हिं" बटन से पूरी ऐप की
+  UI भाषा बदलें; चुनाव `localStorage` में सेव रहता है। नई स्ट्रिंग्स
+  `js/i18n.js` में जोड़ें।
+- **आवाज़ से खोज (Mic)** — सर्च बार में 🎤 आइकन दबाकर बोलकर खोजें (Web Speech
+  API इस्तेमाल होती है — Chrome/Edge में सबसे बेहतर काम करता है; भाषा चुनी
+  हुई UI भाषा के हिसाब से hi-IN/en-US सेट होती है)।
 
 ## फ़ोल्डर स्ट्रक्चर
 
 ```
-.
-├── index.html              → पूरा ऐप (Home feed + Video Player + Library, views toggle होते हैं)
-├── css/style.css           → सारे डिज़ाइन टोकन, कलर, टाइपोग्राफी, लेआउट
-├── js/archive.js           → archive.org API wrapper (search, metadata, thumbnails, embed URL)
-├── js/app.js               → रेंडरिंग लॉजिक, व्यू स्विचिंग, असली प्लेयर एम्बेड
-├── favicon.svg             → साइट आइकन
-├── scripts/
-│   ├── verify.mjs          → चेक करता है कि index.html में refer की गई सारी local assets मौजूद हैं
-│   └── smoke-test.mjs      → jsdom में पूरा ऐप फ़्लो टेस्ट (mock API के साथ)
-├── eslint.config.js        → JavaScript linting (ESLint, flat config)
-├── stylelint.config.cjs    → CSS linting
-├── .htmlvalidate.json      → HTML validation
-├── .github/workflows/ci.yml→ CI: lint + tests, और main पर GitHub Pages deploy
-└── package.json            → dev scripts (lint / test / serve)
+video-app/
+├── index.html        → पूरा ऐप (Home / Library / Player, सब एक फाइल में toggle होते हैं)
+├── css/style.css      → डिज़ाइन टोकन, कलर, टाइपोग्राफी, लेआउट
+├── js/i18n.js          → भाषा डिक्शनरी (Hindi/English) + toggle लॉजिक
+├── js/archive.js        → archive.org API wrapper (search, metadata, फ़ाइल चुनना, downloads)
+└── js/app.js              → रेंडरिंग, प्लेयर, सेव/लाइब्रेरी, सर्च, माइक — पूरा ऐप लॉजिक
 ```
-
-## फीचर्स
-
-- **Live content** — पूरा फीड, सर्च और प्लेबैक सीधे **archive.org की public API**
-  से आता है (कोई API key नहीं चाहिए)
-- **Home Feed** — responsive card grid (mobile पर 1 कॉलम, desktop पर 4),
-  असली thumbnails के साथ
-- **Filter chips** — archive.org के collections से मैप्ड: मूवीज़, क्लासिक टीवी,
-  म्यूज़िक, एनिमेशन, न्यूज़रील्स, NASA, आर्काइव्ड फ़िल्में
-- **Search bar** — archive.org पर title/subject/creator से खोजें; query
-  sanitize होती है, `Enter` से खोज और `Esc` से बंद
-- **Video Player screen** — असली archive.org embed player (video/audio दोनों),
-  ambient glow effect, असली title/description/creator, **जानकारी टैब**
-  (creator, mediatype, subjects, files…), related items वाला up-next
-- **Player actions** — Subscribe (persist होता है), Like/Dislike, Share
-  (archive.org का लिंक clipboard पर), Download (archive.org की files पेज पर)
-- **Mini player** — होम पर वापस जाने पर चल रहा वीडियो bottom-right में
-  मिनिमाइज़ हो जाता है (iframe DOM में move होता है, reload नहीं होता)
-- **Library (watch history)** — देखे हुए वीडियो इस डिवाइस पर सेव रहते हैं,
-  एक क्लिक में फिर से खुलते हैं; "इतिहास साफ़ करें" से मिट जाते हैं
-- **Browser back/forward** — History API integration: ब्राउज़र का बैक बटन
-  ऐप के व्यूज़ के साथ सही से काम करता है
-- **Bottom navigation** — Home, Shorts, Create, Subscriptions, Library
-  (Shorts/Create/Subscriptions अभी placeholder हैं)
-- **Dark theme** — YouTube जैसा डार्क बेस + red accent (सिर्फ CTA के लिए)
-- पूरी तरह **responsive** — mobile से लेकर desktop तक; cards keyboard से
-  भी खुलते हैं (Tab + Enter), screen-reader लेबल्स शामिल
-
-## डेवलपर workflow
-
-```bash
-npm install        # dev dependencies (eslint, stylelint, html-validate, jsdom)
-npm run lint       # JS + HTML + CSS सारे checks
-npm run lint:fix   # auto-fix जहाँ possible हो
-npm run check      # index.html में refer की गई assets मौजूद हैं या नहीं
-npm test           # jsdom smoke test — पूरा UI flow (mock API के साथ)
-npm run serve      → http://localhost:8000
-```
-
-**Tip:** commit से पहले `npm run lint && npm test` चला लें — यही चीज़ें CI
-में भी चलती हैं।
-
-### CI/CD (GitHub Actions)
-
-`.github/workflows/ci.yml` हर push/PR पर ये jobs चलाती है:
-
-1. **Lint & verify** — ESLint, html-validate, Stylelint, asset check,
-   jsdom smoke test, और एक छोटा serve-and-fetch smoke test
-2. **Deploy to GitHub Pages** — `main` पर merge होते ही साइट Pages पर
-   publish हो जाती है (इसके लिए Repo Settings → Pages → Source:
-   **GitHub Actions** चुना होना चाहिए)
-
-इसके लिए repo की Pages setting में Source को "GitHub Actions" चुना होना
-चाहिए। Deploy होने के बाद साइट यहाँ मिलेगी:
-`https://<username>.github.io/Internet-archive/`
 
 ## कस्टमाइज़ करना
 
-- **Collections बदलना:** `index.html` में `#chips` के अंदर हर `<button>` का
-  `data-query` attribute archive.org का search query है। पूरी query syntax:
-  https://archive.org/advancedsearch.php
-- **Default feed:** `js/app.js` में `DEFAULT_QUERY` सबसे पहले active chip से
-  उठता है।
-- **History साइज़:** `js/app.js` में `HISTORY_LIMIT` बदलें।
+- **Collections बदलना:** `index.html` में हर filter chip का `data-query`
+  archive.org search query है, `data-kind` बताता है वो video है या audio।
+  Query syntax: https://archive.org/advancedsearch.php
+- **नई भाषा स्ट्रिंग जोड़ना:** `js/i18n.js` के `STRINGS` object में key जोड़ें,
+  फिर HTML में उस element पर `data-i18n="key"` लगाएं।
+- **Player का चुना गया फ़ाइल फॉर्मेट बदलना:** `js/archive.js` में
+  `VIDEO_FORMAT_PRIORITY` / `AUDIO_FORMAT_PRIORITY` arrays एडिट करें।
+
+## जानी-मानी सीमाएं (Known limitations)
+
+- Voice search सिर्फ उन ब्राउज़र्स में काम करता है जो Web Speech API सपोर्ट
+  करते हैं (Chrome/Edge best; Firefox/Safari में सीमित/अनुपलब्ध हो सकता है) —
+  ऐसे में मिक बटन एक friendly "unsupported" मैसेज दिखाता है, टूटता नहीं।
+- कुछ पुराने/दुर्लभ archive.org आइटम्स में playable mp4/mp3 फ़ाइल न हो तो
+  प्लेयर एक "लोड नहीं हो सका" मैसेज दिखाएगा — ऐसे आइटम पर "archive.org पर
+  पूरा पेज खोलें" लिंक से आइटम का असली पेज देखा जा सकता है।
+- Save/Library पूरी तरह लोकल (उसी ब्राउज़र/डिवाइस) है — किसी अकाउंट या
+  सर्वर से sync नहीं होता।
 
 ## ध्यान दें
 
 यह एक **डिज़ाइन/लर्निंग प्रोजेक्ट** है — YouTube का ब्रांड नाम या लोगो
-इस्तेमाल नहीं किया गया (placeholder branding "StreamHub" है), लेकिन असली
-वीडियो कंटेंट सीधे **Internet Archive (archive.org)** से लाइव आता है —
-यह एक non-profit digital library है और इसका ज़्यादातर कंटेंट पब्लिक डोमेन या
-ओपन-लाइसेंस्ड है। इसे प्रोडक्शन में इस्तेमाल करने से पहले archive.org की
-Terms of Use ज़रूर देख लें: https://archive.org/about/terms.php
-
-## License
-
-[MIT](LICENSE)
+इस्तेमाल नहीं किया गया (placeholder branding "StreamHub")। असली कंटेंट
+Internet Archive से आता है, जो पब्लिक डोमेन/ओपन-लाइसेंस्ड कंटेंट वाली एक
+non-profit digital library है। पब्लिश/प्रोडक्शन में इस्तेमाल से पहले
+archive.org की Terms of Use देख लें: https://archive.org/about/terms.php

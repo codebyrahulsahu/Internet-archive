@@ -10,7 +10,7 @@ module.exports = [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
-      globals: { ...globals.browser, Archive: "writable" }
+      globals: { ...globals.browser, Archive: "writable", I18N: "writable" }
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -18,11 +18,14 @@ module.exports = [
     }
   },
   {
-    // js/archive.js declares the `Archive` global consumed by js/app.js —
-    // declaring a page-level global triggers no-redeclare, which is intended here
-    files: ["js/archive.js"],
+    // js/archive.js and js/i18n.js declare page-level globals (Archive / I18N)
+    // consumed by js/app.js — declaring a top-level const against the
+    // configured global triggers no-redeclare and looks unused to eslint,
+    // which is intended here.
+    files: ["js/archive.js", "js/i18n.js"],
     rules: {
-      "no-redeclare": "off"
+      "no-redeclare": "off",
+      "no-unused-vars": ["error", { args: "none", caughtErrors: "none", varsIgnorePattern: "^(Archive|I18N)$" }]
     }
   },
   {

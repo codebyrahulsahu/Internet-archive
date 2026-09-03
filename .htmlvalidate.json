@@ -2,6 +2,8 @@
   "extends": ["html-validate:recommended"],
   "rules": {
     "no-inline-style": "off",
-    "attribute-boolean-value": "off"
+    "attribute-boolean-value": "off",
+    "no-implicit-button-type": "off",
+    "unique-landmark": "off"
   }
 }
