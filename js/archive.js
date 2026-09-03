@@ -148,6 +148,8 @@ const Archive = (function () {
       channel: creator,
       avatar: initials,
       avatarColor: colorFromString(creator || doc.identifier),
+      // keep the raw count — the UI formats it per language at render time
+      downloads: Number(doc.downloads) || 0,
       views: formatDownloads(doc.downloads),
       time: doc.publicdate ? doc.publicdate.slice(0, 10) : "",
       mediatype: doc.mediatype || "movies",
@@ -156,11 +158,25 @@ const Archive = (function () {
     };
   }
 
+  // Compact counts ("2.5 लाख" / "250K") must follow the *active UI language* —
+  // hardcoding Hindi here mixed "1.5 हज़ार" into the English UI.
+  const compactFormatters = new Map();
+  function compactNumber(n, locale) {
+    let fmt = compactFormatters.get(locale);
+    if (!fmt) {
+      fmt = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
+      compactFormatters.set(locale, fmt);
+    }
+    return fmt.format(n);
+  }
+
   function formatDownloads(n) {
     n = Number(n) || 0;
-    if (n >= 100000) return (n / 100000).toFixed(1) + " लाख";
-    if (n >= 1000) return (n / 1000).toFixed(1) + " हज़ार";
-    return String(n);
+    if (n < 1000) return String(n);
+    const locale = typeof I18N !== "undefined" && typeof I18N.localeTag === "function"
+      ? I18N.localeTag()
+      : "en-US";
+    return compactNumber(n, locale);
   }
 
   // deterministic pastel-ish gradient from a string, so repeat creators get a stable color
@@ -175,5 +191,6 @@ const Archive = (function () {
   return {
     search, metadata, thumbUrl, embedUrl, detailsUrl, fileUrl,
     pickMediaFile, pickPdfFile, listDownloadFiles, humanSize, kindOf, toCardModel,
+    formatCount: formatDownloads,
   };
 })();

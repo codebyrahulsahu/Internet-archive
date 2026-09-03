@@ -15,6 +15,8 @@
   const brandLogo = document.getElementById("brandLogo");
   const chips = document.getElementById("chips");
   const bottomNav = document.getElementById("bottomNav");
+  const topHomeBtn = document.getElementById("topHomeBtn");
+  const topLibraryBtn = document.getElementById("topLibraryBtn");
 
   const miniPlayer = document.getElementById("miniPlayer");
   const miniVideoSlot = document.getElementById("miniVideoSlot");
@@ -60,16 +62,33 @@
 
   let currentItem = null;   // {identifier, title, channel, kind, thumbUrl, ...}
   let currentMediaEl = null; // the live <video>/<audio> DOM node, moved between player/mini-player
-  let currentKind = "video"; // 'video' | 'audio'
+  let currentKind = "video"; // 'video' | 'audio' | 'text'
+
+  /* ---------- view + request state ---------- */
+  let lastListView = "home"; // list the player was opened from (Back button target)
+  let feedQuery = "";        // query behind the current feed — reused by "up next"
+  let feedItems = [];        // cached so a language switch repaints without refetching
+  let upNextItems = [];
+  let feedToken = 0;         // out-of-order response guard (rapid chip/search clicks)
+  let upNextToken = 0;
+  let pdfTimer = 0;
+  let micTimer = 0;
+  let shareTimer = 0;
 
   /* ================= WATCH LATER / SAVED (localStorage) ================= */
   const SAVE_KEY = "sh_saved_items";
 
   function getSaved() {
-    try { return JSON.parse(localStorage.getItem(SAVE_KEY) || "[]"); }
-    catch { return []; }
+    try {
+      const list = JSON.parse(localStorage.getItem(SAVE_KEY) || "[]");
+      return Array.isArray(list) ? list.filter(i => i && typeof i.identifier === "string") : [];
+    }
+    catch { return []; } // corrupt JSON must not break the whole app
   }
-  function setSaved(list) { localStorage.setItem(SAVE_KEY, JSON.stringify(list)); }
+  function setSaved(list) {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(list)); return true; }
+    catch { return false; } // private mode / quota exceeded — caller reports it
+  }
   function isSaved(identifier) { return getSaved().some(i => i.identifier === identifier); }
   function toggleSave(item) {
     const list = getSaved();
@@ -79,94 +98,150 @@
       list.unshift({
         identifier: item.identifier, title: item.title, channel: item.channel,
         avatar: item.avatar || "IA", avatarColor: item.avatarColor || "linear-gradient(135deg,#555,#333)",
-        thumbUrl: item.thumbUrl, kind: item.kind || currentKind, views: item.views || "", time: item.time || "",
+        thumbUrl: item.thumbUrl, kind: item.kind || currentKind, views: item.views || "",
+        downloads: typeof item.downloads === "number" ? item.downloads : null, time: item.time || "",
       });
     }
-    setSaved(list);
+    if (!setSaved(list)) { flashSaveStatus(); return; }
     updateSaveButton();
+    if (!libraryView.hidden) renderLibrary();
   }
   function updateSaveButton() {
     if (!currentItem) return;
-    saveBtn.classList.toggle("active", isSaved(currentItem.identifier));
-    saveBtn.querySelector("span").textContent = I18N.t(isSaved(currentItem.identifier) ? "saved" : "save");
+    const saved = isSaved(currentItem.identifier);
+    saveBtn.classList.toggle("active", saved);
+    saveBtn.setAttribute("aria-pressed", String(saved));
+    saveBtn.querySelector("span").textContent = I18N.t(saved ? "saved" : "save");
+  }
+
+  /* ================= HTML HELPERS ================= */
+
+  function escapeHTML(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  }
+
+  // Gradients we generate ourselves are safe; anything else (e.g. a hand-edited
+  // localStorage entry) must not be able to break out of a style="…" attribute.
+  function safeCSSColor(value) {
+    const s = String(value || "");
+    return /^[a-z0-9%,#().\s-]+$/i.test(s) ? s : "linear-gradient(135deg,#555,#333)";
+  }
+
+  // archive.org descriptions are user-supplied HTML. Reading them through a
+  // detached <div>.innerHTML would let a rogue <img onerror=…> run, so parse
+  // with DOMParser instead — it never loads resources or runs scripts.
+  function stripHtml(str) {
+    const raw = Array.isArray(str) ? str.join(" ") : String(str == null ? "" : str);
+    if (typeof DOMParser === "function") {
+      const doc = new DOMParser().parseFromString(raw, "text/html");
+      return (doc.body && doc.body.textContent) || "";
+    }
+    return raw.replace(/<[^>]*>/g, " ");
   }
 
   /* ================= FEED ================= */
 
+  // Counts are formatted per language at render time (not baked into the model),
+  // so toggling the language repaints "1.5K" -> "1.5 हज़ार" without a refetch.
+  function formatCount(v) {
+    if (v && typeof v.downloads === "number") return Archive.formatCount(v.downloads);
+    return (v && v.views) || "";
+  }
+
   function cardHTML(v) {
     const badge = v.kind === "audio" ? "♪" : v.kind === "text" ? "📄" : "";
+    const color = safeCSSColor(v.avatarColor);
     return `
-      <article class="card" data-id="${v.identifier}" data-kind="${v.kind}">
+      <article class="card" data-id="${escapeHTML(v.identifier)}" data-kind="${escapeHTML(v.kind)}">
         <div class="thumb-wrap">
-          <img src="${v.thumbUrl}" alt="" loading="lazy"
-               onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-fallback',style:'background:${v.avatarColor}'}))">
+          <img src="${escapeHTML(v.thumbUrl)}" alt="" loading="lazy"
+               onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-fallback',style:'background:${color}'}))">
           ${badge ? `<span class="media-badge">${badge}</span>` : ""}
         </div>
         <div class="card-body">
-          <span class="avatar" style="background:${v.avatarColor}">${v.avatar}</span>
+          <span class="avatar" style="background:${color}">${escapeHTML(v.avatar)}</span>
           <div class="card-text">
             <p class="card-title">${escapeHTML(v.title)}</p>
             <div class="card-meta">
               <span>${escapeHTML(v.channel)}</span>
-              <span>${v.views} <span data-i18n-inline="views">${I18N.t("views")}</span> ${v.time ? "· " + v.time : ""}</span>
+              <span>${escapeHTML(formatCount(v))} <span data-i18n-inline="views">${I18N.t("views")}</span> ${v.time ? "· " + escapeHTML(v.time) : ""}</span>
             </div>
           </div>
         </div>
       </article>`;
   }
 
-  function escapeHTML(s) {
-    return String(s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  function bindCards(container, items) {
+    container.querySelectorAll(".card").forEach(card => {
+      card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
+    });
+  }
+
+  function renderFeed() {
+    grid.innerHTML = feedItems.map(cardHTML).join("");
+    bindCards(grid, feedItems);
   }
 
   async function loadFeed(query, kind) {
+    const token = ++feedToken;
+    feedQuery = query;
+    feedItems = [];
     feedStatus.hidden = false;
     feedStatus.textContent = I18N.t("loading");
     grid.innerHTML = "";
     try {
       const docs = await Archive.search(query, 16, kind);
-      if (!docs.length) {
+      if (token !== feedToken) return; // a newer request already replaced this one
+      feedItems = docs.map(Archive.toCardModel);
+      if (!feedItems.length) {
         feedStatus.textContent = I18N.t("noResults");
         return;
       }
-      const items = docs.map(Archive.toCardModel);
-      grid.innerHTML = items.map(cardHTML).join("");
-      grid.querySelectorAll(".card").forEach(card => {
-        card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
-      });
+      renderFeed();
       feedStatus.hidden = true;
     } catch (err) {
+      if (token !== feedToken) return;
       feedStatus.textContent = I18N.t("loadFailed");
     }
   }
 
-  async function loadUpNext(relatedQuery, kind) {
+  async function loadUpNext() {
+    const token = ++upNextToken;
+    upNextItems = [];
     upNextList.innerHTML = "";
+    if (!feedQuery) return;
     try {
-      const query = relatedQuery || (chips.querySelector(".chip.active") || chips.querySelector(".chip")).dataset.query;
-      const useKind = kind || currentKind;
-      const docs = await Archive.search(query, 8, useKind);
-      const items = docs.map(Archive.toCardModel).filter(i => i.identifier !== (currentItem && currentItem.identifier));
-      upNextList.innerHTML = items.slice(0, 6).map(upCardHTML).join("");
-      upNextList.querySelectorAll(".up-card").forEach(card => {
-        card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
-      });
+      const docs = await Archive.search(feedQuery, 8, currentKind);
+      if (token !== upNextToken) return;
+      upNextItems = docs
+        .map(Archive.toCardModel)
+        .filter(i => i.identifier !== (currentItem && currentItem.identifier))
+        .slice(0, 6);
+      renderUpNext();
     } catch {
-      upNextList.innerHTML = "";
+      if (token === upNextToken) { upNextItems = []; upNextList.innerHTML = ""; }
     }
   }
 
   function upCardHTML(v) {
+    const color = safeCSSColor(v.avatarColor);
     return `
-      <div class="up-card" data-id="${v.identifier}">
-        <div class="up-thumb"><img src="${v.thumbUrl}" alt="" loading="lazy"
-             onerror="this.style.background='${v.avatarColor}';this.removeAttribute('src')"></div>
+      <div class="up-card" data-id="${escapeHTML(v.identifier)}">
+        <div class="up-thumb"><img src="${escapeHTML(v.thumbUrl)}" alt="" loading="lazy"
+             onerror="this.style.background='${color}';this.removeAttribute('src')"></div>
         <div class="up-info">
           <p class="up-title">${escapeHTML(v.title)}</p>
           <span class="up-channel">${escapeHTML(v.channel)}</span>
-          <span class="up-meta">${v.views} ${I18N.t("views")}</span>
+          <span class="up-meta">${escapeHTML(formatCount(v))} <span data-i18n-inline="views">${I18N.t("views")}</span></span>
         </div>
       </div>`;
+  }
+
+  function renderUpNext() {
+    upNextList.innerHTML = upNextItems.map(upCardHTML).join("");
+    upNextList.querySelectorAll(".up-card").forEach(card => {
+      card.addEventListener("click", () => openMedia(upNextItems.find(i => i.identifier === card.dataset.id)));
+    });
   }
 
   /* ================= LIBRARY (SAVED) VIEW ================= */
@@ -180,18 +255,18 @@
     }
     libraryEmpty.hidden = true;
     libraryGrid.innerHTML = items.map(cardHTML).join("");
-    libraryGrid.querySelectorAll(".card").forEach(card => {
-      card.addEventListener("click", () => openMedia(items.find(i => i.identifier === card.dataset.id)));
-    });
+    bindCards(libraryGrid, items);
   }
 
   /* ================= CUSTOM PLAYER (native <video>/<audio>, no third-party embed) ================= */
 
   function fmtTime(sec) {
     if (!isFinite(sec) || sec < 0) sec = 0;
-    const m = Math.floor(sec / 60);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = Math.floor(sec % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
+    // anything longer than an hour needs h:mm:ss, not "75:23"
+    return h > 0 ? `${h}:${m.toString().padStart(2, "0")}:${s}` : `${m}:${s}`;
   }
 
   function buildMediaEl(kind) {
@@ -206,7 +281,9 @@
   function wireMediaEvents(el) {
     el.addEventListener("loadedmetadata", () => { durTimeEl.textContent = fmtTime(el.duration); });
     el.addEventListener("timeupdate", () => {
-      if (el.duration) progressFill.style.width = (el.currentTime / el.duration) * 100 + "%";
+      // live streams report duration Infinity — that must not produce "NaN%"
+      const d = el.duration;
+      progressFill.style.width = (isFinite(d) && d > 0) ? ((el.currentTime / d) * 100) + "%" : "0%";
       curTimeEl.textContent = fmtTime(el.currentTime);
     });
     el.addEventListener("play", syncPlayIcons);
@@ -218,13 +295,21 @@
   }
 
   function syncPlayIcons() {
-    const playing = currentMediaEl && !currentMediaEl.paused;
+    const playing = !!currentMediaEl && !currentMediaEl.paused;
     playToggle.querySelector(".ic-play").hidden = playing;
     playToggle.querySelector(".ic-pause").hidden = !playing;
     const miniIcon = miniPlayToggle.querySelector("svg");
     miniIcon.innerHTML = playing
       ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
       : '<path d="M8 5v14l11-7z"/>';
+  }
+
+  // a fresh media element starts unmuted — the icons must not keep the
+  // previous item's muted state
+  function syncMuteIcons() {
+    const muted = !!currentMediaEl && currentMediaEl.muted;
+    muteToggle.querySelector(".ic-vol").hidden = muted;
+    muteToggle.querySelector(".ic-mute").hidden = !muted;
   }
 
   playToggle.addEventListener("click", () => {
@@ -237,25 +322,46 @@
     currentMediaEl.paused ? currentMediaEl.play() : currentMediaEl.pause();
   });
   progressTrack.addEventListener("click", e => {
-    if (!currentMediaEl || !currentMediaEl.duration) return;
+    if (!currentMediaEl || !isFinite(currentMediaEl.duration)) return;
     const rect = progressTrack.getBoundingClientRect();
+    if (!rect.width) return;
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     currentMediaEl.currentTime = pct * currentMediaEl.duration;
   });
   muteToggle.addEventListener("click", () => {
     if (!currentMediaEl) return;
     currentMediaEl.muted = !currentMediaEl.muted;
-    muteToggle.querySelector(".ic-vol").hidden = currentMediaEl.muted;
-    muteToggle.querySelector(".ic-mute").hidden = !currentMediaEl.muted;
+    syncMuteIcons();
   });
   fullscreenBtn.addEventListener("click", () => {
-    if (currentKind === "audio") return;
+    if (!currentMediaEl || currentKind !== "video") return;
     if (currentMediaEl.requestFullscreen) currentMediaEl.requestFullscreen();
     else if (currentMediaEl.webkitEnterFullscreen) currentMediaEl.webkitEnterFullscreen();
   });
 
+  /* ================= TABS (up next / comments) ================= */
+
+  function selectTab(name) {
+    document.querySelectorAll(".tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === name);
+    });
+    const isComments = name === "comments";
+    upNextList.hidden = isComments;
+    commentsDisabled.hidden = !isComments;
+  }
+
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.tab));
+  });
+
+  /* ================= OPEN AN ITEM ================= */
+
   async function openMedia(quickModel) {
     if (!quickModel) return;
+
+    // remember which list we came from, but only when we're not already
+    // inside the player (up-next taps must not change the Back target)
+    if (playerView.hidden) lastListView = libraryView.hidden ? "home" : "library";
 
     // reopening the item that's already loaded (e.g. tapping the mini-player) —
     // just move the live element back into the main player, don't reload it.
@@ -269,7 +375,6 @@
       customControls.hidden = false;
       playerLoading.hidden = true;
       syncPlayIcons();
-      loadUpNext(null, currentKind);
       return;
     }
 
@@ -278,7 +383,7 @@
 
     // reset shell
     pTitle.textContent = quickModel.title;
-    pAvatar.style.background = quickModel.avatarColor;
+    pAvatar.style.background = safeCSSColor(quickModel.avatarColor);
     pAvatar.textContent = quickModel.avatar;
     pChannel.textContent = quickModel.channel;
     pMetaLine.textContent = I18N.t("loading");
@@ -286,10 +391,12 @@
     openArchiveLink.href = Archive.detailsUrl(quickModel.identifier);
     ambientGlow.style.backgroundImage = `url(${quickModel.thumbUrl})`;
     downloadPanel.hidden = true;
+    downloadBtn.setAttribute("aria-expanded", "false");
     downloadList.innerHTML = "";
     updateSaveButton();
 
     // reset player shell UI
+    clearPdfTimer();
     playerLoading.hidden = false;
     playerLoading.textContent = I18N.t("loading");
     customControls.hidden = true;
@@ -297,22 +404,27 @@
     curTimeEl.textContent = "0:00";
     durTimeEl.textContent = "0:00";
     player.classList.remove("doc-mode");
+    fullscreenBtn.hidden = currentKind !== "video";
+    selectTab("next");
 
     // detach any previous media element (also sweep any stray leftover nodes)
     if (currentMediaEl) { currentMediaEl.pause(); currentMediaEl.remove(); currentMediaEl = null; }
     player.querySelectorAll("video.media-el, audio.media-el, iframe.pdf-frame").forEach(n => n.remove());
     audioStage.hidden = true;
     pdfFallback.hidden = true;
+    syncMuteIcons();
 
     switchToPlayerView();
     hideMiniPlayer();
-    loadUpNext(null, currentKind);
+    loadUpNext();
 
     try {
       const meta = await Archive.metadata(quickModel.identifier);
+      if (!currentItem || currentItem.identifier !== quickModel.identifier) return; // stale
       const m = meta.metadata || {};
       const kind = Archive.kindOf(m.mediatype);
       currentKind = kind === "text" ? "text" : kind === "audio" ? "audio" : "video";
+      fullscreenBtn.hidden = currentKind !== "video";
 
       pTitle.textContent = m.title || quickModel.title;
       const creator = Array.isArray(m.creator) ? m.creator[0] : (m.creator || quickModel.channel);
@@ -340,10 +452,11 @@
       const el = buildMediaEl(currentKind);
       el.src = picked.url;
       currentMediaEl = el;
+      syncMuteIcons();
 
       if (currentKind === "audio") {
         audioStage.hidden = false;
-        audioArt.style.background = quickModel.avatarColor;
+        audioArt.style.background = safeCSSColor(quickModel.avatarColor);
         audioArt.textContent = quickModel.avatar;
         el.hidden = true; // no visual track — audioStage supplies the artwork
       } else {
@@ -353,6 +466,7 @@
       el.autoplay = true;
       el.play().catch(() => {});
     } catch (err) {
+      if (!currentItem || currentItem.identifier !== quickModel.identifier) return; // stale
       pMetaLine.textContent = "Internet Archive";
       pDesc.textContent = I18N.t("descFailed");
       playerLoading.textContent = I18N.t("loadFailed");
@@ -372,11 +486,16 @@
     const frame = document.createElement("iframe");
     frame.className = "pdf-frame";
     frame.src = pdf.url;
-    frame.title = "PDF preview";
+    frame.title = I18N.t("pdfPreviewTitle");
     frame.addEventListener("load", () => { playerLoading.hidden = true; });
     player.insertBefore(frame, customControls);
     // safety net: some mobile browsers can't render PDFs inline and never fire "load" as expected
-    setTimeout(() => { playerLoading.hidden = true; }, 4000);
+    clearPdfTimer();
+    pdfTimer = setTimeout(() => { playerLoading.hidden = true; }, 4000);
+  }
+
+  function clearPdfTimer() {
+    if (pdfTimer) { clearTimeout(pdfTimer); pdfTimer = 0; }
   }
 
   function renderDownloadList(files) {
@@ -385,17 +504,19 @@
       return;
     }
     downloadList.innerHTML = files.map(f => `
-      <a class="download-row" href="${f.url}" download target="_blank" rel="noopener">
+      <a class="download-row" href="${escapeHTML(f.url)}" download target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm0-10h4v6h6v-6h4l-7-7z"/></svg>
         <span class="dl-name">${escapeHTML(f.name)}</span>
-        <span class="dl-meta">${f.format} · ${f.size}</span>
+        <span class="dl-meta">${escapeHTML(f.format)} · ${escapeHTML(f.size)}</span>
       </a>`).join("");
   }
 
-  function stripHtml(str) {
-    const div = document.createElement("div");
-    div.innerHTML = Array.isArray(str) ? str.join(" ") : str;
-    return div.textContent || div.innerText || "";
+  /* ================= VIEW SWITCHING ================= */
+
+  function setActiveNav(view) {
+    bottomNav.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+    if (topHomeBtn) topHomeBtn.classList.toggle("active", view === "home");
+    if (topLibraryBtn) topLibraryBtn.classList.toggle("active", view === "library");
   }
 
   function switchToPlayerView() {
@@ -403,6 +524,7 @@
     libraryView.hidden = true;
     chips.hidden = true;
     searchBar.hidden = true;
+    stopMic();
     playerView.hidden = false;
     backBtn.hidden = false;
     brandLogo.style.display = "none";
@@ -410,48 +532,44 @@
     window.scrollTo({ top: 0 });
   }
 
-  function goHome() {
+  function showListView(name) {
     playerView.hidden = true;
-    libraryView.hidden = true;
-    homeView.hidden = false;
+    homeView.hidden = name !== "home";
+    libraryView.hidden = name !== "library";
     chips.hidden = false;
+    searchBar.hidden = true;
+    stopMic();
     backBtn.hidden = true;
     brandLogo.style.display = "flex";
     bottomNav.hidden = false;
+    setActiveNav(name);
+    if (name === "library") renderLibrary();
     if (currentMediaEl) showMiniPlayer();
   }
 
-  function goLibrary() {
-    playerView.hidden = true;
-    homeView.hidden = true;
-    chips.hidden = true;
-    libraryView.hidden = false;
-    backBtn.hidden = true;
-    brandLogo.style.display = "flex";
-    bottomNav.hidden = false;
-    renderLibrary();
-    if (currentMediaEl) showMiniPlayer();
-  }
+  function goHome() { showListView("home"); }
+  function goLibrary() { showListView("library"); }
 
-  backBtn.addEventListener("click", goHome);
+  backBtn.addEventListener("click", () => showListView(lastListView));
   bottomNav.querySelectorAll(".nav-item").forEach(btn => {
     btn.addEventListener("click", () => {
-      bottomNav.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
       if (btn.dataset.view === "home") goHome();
       if (btn.dataset.view === "library") goLibrary();
     });
   });
+  // the bottom nav is hidden on wide screens — these top-bar buttons replace it
+  if (topHomeBtn) topHomeBtn.addEventListener("click", goHome);
+  if (topLibraryBtn) topLibraryBtn.addEventListener("click", goLibrary);
 
   /* ================= MINI PLAYER (moves the live media element, no reload) ================= */
 
   function showMiniPlayer() {
-    if (!currentMediaEl) return;
+    if (!currentMediaEl || !currentItem) return;
     miniVideoSlot.innerHTML = "";
     miniVideoSlot.appendChild(currentMediaEl); // move the live node — keeps it playing, no reload
     if (currentKind === "audio") {
       currentMediaEl.hidden = true; // no visual track — show a color chip instead
-      miniVideoSlot.style.background = currentItem.avatarColor;
+      miniVideoSlot.style.background = safeCSSColor(currentItem.avatarColor);
     } else {
       currentMediaEl.hidden = false;
       miniVideoSlot.style.background = "";
@@ -484,6 +602,7 @@
 
   downloadBtn.addEventListener("click", () => {
     downloadPanel.hidden = !downloadPanel.hidden;
+    downloadBtn.setAttribute("aria-expanded", String(!downloadPanel.hidden));
   });
 
   shareBtn.addEventListener("click", async () => {
@@ -497,7 +616,13 @@
   function flashShareStatus() {
     const span = shareBtn.querySelector("span");
     span.textContent = I18N.t("linkCopied");
-    setTimeout(() => { span.textContent = I18N.t("share"); }, 1500);
+    if (shareTimer) clearTimeout(shareTimer);
+    shareTimer = setTimeout(() => { span.textContent = I18N.t("share"); shareTimer = 0; }, 1500);
+  }
+  function flashSaveStatus() {
+    const span = saveBtn.querySelector("span");
+    span.textContent = I18N.t("saveFailed");
+    setTimeout(() => { updateSaveButton(); }, 1500);
   }
 
   /* ================= FILTER CHIPS ================= */
@@ -518,16 +643,40 @@
     searchInput.focus();
   });
   searchClose.addEventListener("click", () => {
+    stopMic();
     searchBar.hidden = true;
-    chips.hidden = false;
+    chips.hidden = !playerView.hidden; // stay hidden while the player is on screen
     searchInput.value = "";
   });
+
+  // archive.org search is Lucene: parentheses, quotes, colons and boolean
+  // keywords in user input change (or break) the query, so keep letters,
+  // numbers, spaces and apostrophes only.
+  function sanitizeSearchTerm(text) {
+    return String(text || "")
+      .replace(/[^\p{L}\p{N}\s']/gu, " ")
+      .replace(/\b(AND|OR|NOT|TO)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function runSearch(text) {
-    if (!text.trim()) return;
-    chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-    loadFeed(`title:(${text}) OR subject:(${text}) OR description:(${text})`, "video");
+    const term = sanitizeSearchTerm(text);
     searchBar.hidden = true;
-    chips.hidden = false;
+    // searching always brings you back to the home feed — results must not load
+    // into a hidden grid while a player (or the library) is on screen
+    showListView("home");
+    if (!term) {
+      feedToken++; // cancel anything in flight
+      feedItems = [];
+      grid.innerHTML = "";
+      feedStatus.hidden = false;
+      feedStatus.textContent = I18N.t("emptySearch");
+      return;
+    }
+    const chip = chips.querySelector(".chip.active") || chips.querySelector(".chip");
+    const kind = (chip && chip.dataset.kind) || "video";
+    loadFeed(`title:(${term}) OR subject:(${term}) OR description:(${term})`, kind);
   }
   searchInput.addEventListener("keydown", e => {
     if (e.key === "Enter") runSearch(searchInput.value);
@@ -535,53 +684,65 @@
 
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognizer = null;
-  micBtn.addEventListener("click", () => {
-    if (!SpeechRecognitionCtor) {
-      micStatus.hidden = false;
-      micStatus.textContent = I18N.t("micUnsupported");
-      setTimeout(() => { micStatus.hidden = true; }, 3000);
-      return;
-    }
-    if (recognizer) { recognizer.stop(); return; }
-    recognizer = new SpeechRecognitionCtor();
-    recognizer.lang = I18N.lang() === "hi" ? "hi-IN" : "en-US";
-    recognizer.interimResults = false;
-    recognizer.maxAlternatives = 1;
-    micBtn.classList.add("active");
-    micStatus.hidden = false;
-    micStatus.textContent = I18N.t("listening");
 
-    recognizer.onresult = e => {
-      const text = e.results[0][0].transcript;
-      searchInput.value = text;
-      runSearch(text);
-    };
-    recognizer.onerror = () => { micStatus.hidden = true; };
-    recognizer.onend = () => { micBtn.classList.remove("active"); micStatus.hidden = true; recognizer = null; };
-    recognizer.start();
+  function showMicStatus(message) {
+    micStatus.hidden = false;
+    micStatus.textContent = message;
+    if (micTimer) clearTimeout(micTimer);
+    micTimer = setTimeout(() => { micStatus.hidden = true; micTimer = 0; }, 3000);
+  }
+  function stopMic() {
+    if (micTimer) { clearTimeout(micTimer); micTimer = 0; }
+    micStatus.hidden = true;
+    micBtn.classList.remove("active");
+    if (recognizer) {
+      const r = recognizer;
+      recognizer = null;
+      try { r.stop(); } catch { /* already stopped */ }
+    }
+  }
+
+  micBtn.addEventListener("click", () => {
+    if (!SpeechRecognitionCtor) { showMicStatus(I18N.t("micUnsupported")); return; }
+    if (recognizer) { stopMic(); return; }
+    try {
+      recognizer = new SpeechRecognitionCtor();
+      recognizer.lang = I18N.localeTag();
+      recognizer.interimResults = false;
+      recognizer.maxAlternatives = 1;
+      micBtn.classList.add("active");
+      micStatus.hidden = false;
+      micStatus.textContent = I18N.t("listening");
+
+      recognizer.onresult = e => {
+        const text = e.results[0][0].transcript;
+        searchInput.value = text;
+        runSearch(text);
+      };
+      recognizer.onerror = () => { showMicStatus(I18N.t("micError")); };
+      recognizer.onend = () => { micBtn.classList.remove("active"); micStatus.hidden = true; recognizer = null; };
+      recognizer.start(); // may throw when permission is denied
+    } catch {
+      recognizer = null;
+      micBtn.classList.remove("active");
+      showMicStatus(I18N.t("micError"));
+    }
   });
 
   /* ================= LANGUAGE TOGGLE ================= */
   langToggle.addEventListener("click", () => I18N.toggle());
   document.addEventListener("i18n:changed", () => {
     if (currentItem) updateSaveButton();
-    if (!homeView.hidden) { /* re-render feed text bits handled by data-i18n already */ }
+    // counts ("2.5 लाख" / "250K") are baked into the rendered cards, so repaint
+    // the lists from cache instead of leaving the old language on screen
+    if (!homeView.hidden && feedItems.length) renderFeed();
     if (!libraryView.hidden) renderLibrary();
-  });
-
-  /* ================= TABS ================= */
-  document.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      const isComments = tab.dataset.tab === "comments";
-      upNextList.hidden = isComments;
-      commentsDisabled.hidden = !isComments;
-    });
+    if (!playerView.hidden && upNextItems.length) renderUpNext();
   });
 
   /* ================= INIT ================= */
   I18N.apply();
-  const defaultChip = chips.querySelector(".chip.active");
+  const defaultChip = chips.querySelector(".chip.active") || chips.querySelector(".chip");
+  setActiveNav("home");
   loadFeed(defaultChip.dataset.query, defaultChip.dataset.kind);
 })();

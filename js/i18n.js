@@ -8,6 +8,9 @@ const I18N = (function () {
     micTitle:       { hi: "आवाज़ से खोजें",                      en: "Search by voice" },
     listening:      { hi: "सुन रहा हूँ…",                        en: "Listening…" },
     micUnsupported: { hi: "इस ब्राउज़र में आवाज़ से खोज उपलब्ध नहीं है।", en: "Voice search isn't supported in this browser." },
+    micError:       { hi: "माइक शुरू नहीं हो सका — माइक की अनुमति चेक करें।", en: "Couldn't start the microphone — check the mic permission." },
+    emptySearch:    { hi: "खोजने के लिए कुछ शब्द लिखें।", en: "Type a few words to search." },
+    saveFailed:     { hi: "सेव नहीं हो सका", en: "Couldn't save" },
     chipAll:        { hi: "सभी",              en: "All" },
     chipMovies:     { hi: "मूवीज़",            en: "Movies" },
     chipClassicTv:  { hi: "क्लासिक टीवी",       en: "Classic TV" },
@@ -45,10 +48,15 @@ const I18N = (function () {
     views:          { hi: "डाउनलोड्स", en: "downloads" },
     audioNote:      { hi: "ऑडियो", en: "Audio" },
     documentNote:   { hi: "डॉक्यूमेंट", en: "Document" },
+    pdfPreviewTitle:{ hi: "डॉक्यूमेंट प्रीव्यू", en: "Document preview" },
     pdfNoPreview:   { hi: "इस फ़ाइल का सीधा प्रीव्यू उपलब्ध नहीं है — नीचे डाउनलोड या 'archive.org पर खोलें' लिंक इस्तेमाल करें।", en: "A direct preview isn't available for this file — use the download or 'open on archive.org' link below." },
   };
 
-  let current = localStorage.getItem("sh_lang") || "hi";
+  let current = "hi";
+  try {
+    const stored = localStorage.getItem("sh_lang");
+    if (stored === "en" || stored === "hi") current = stored;
+  } catch { /* storage blocked — fall back to the default language */ }
 
   function t(key) {
     const entry = STRINGS[key];
@@ -58,11 +66,14 @@ const I18N = (function () {
 
   function lang() { return current; }
 
+  /** BCP-47 tag for the active language — used for Intl + SpeechRecognition. */
+  function localeTag() { return current === "en" ? "en-US" : "hi-IN"; }
+
   function setLang(l) {
     current = l === "en" ? "en" : "hi";
-    localStorage.setItem("sh_lang", current);
+    try { localStorage.setItem("sh_lang", current); }
+    catch { /* private mode / blocked storage — keep the in-memory choice */ }
     apply();
-    document.documentElement.lang = current;
   }
 
   function toggle() {
@@ -77,12 +88,23 @@ const I18N = (function () {
       el.setAttribute("placeholder", t(el.dataset.i18nPlaceholder));
     });
     document.querySelectorAll("[data-i18n-title]").forEach(el => {
-      el.setAttribute("title", t(el.dataset.i18nTitle));
+      const text = t(el.dataset.i18nTitle);
+      el.setAttribute("title", text);
+      // icon-only buttons carry the same text as their accessible name
+      if (el.hasAttribute("aria-label")) el.setAttribute("aria-label", text);
+    });
+    // short inline strings inside generated markup (e.g. the "downloads" label
+    // on every feed card). They carry their own key attribute so a language
+    // switch updates them without rebuilding the list.
+    document.querySelectorAll("[data-i18n-inline]").forEach(el => {
+      el.textContent = t(el.dataset.i18nInline);
     });
     const langBtn = document.getElementById("langToggle");
     if (langBtn) langBtn.textContent = current === "hi" ? "EN" : "हिं";
+    // keep <html lang> in sync even on first load from a stored preference
+    document.documentElement.lang = current;
     document.dispatchEvent(new CustomEvent("i18n:changed"));
   }
 
-  return { t, lang, setLang, toggle, apply };
+  return { t, lang, localeTag, setLang, toggle, apply };
 })();
